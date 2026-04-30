@@ -3,9 +3,9 @@
 
   "radars": ["brz", "gdy", "gsa", "leg", "pas", "poz", "ram", "rze", "swi", "uzr"],
 
-  "radar_products": ["0_5.ppi", "125.cappi", "200.dpsri", "200_etz.eht", "250.max"],
+  "radar_products": ["0_5.ppi", "125.cappi"],
 
-  "compo_products": ["CAPPI.comp.cappi", "CMAX_250.comp.cmax", "DPSRI.comp.sri"],
+  "compo_products": ["CAPPI.comp.cappi", "DPSRI.comp.sri"],
 
   "unit_labels": {
     "DBZH":  "Odbiciowość [dBZ]",
