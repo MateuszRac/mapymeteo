@@ -8,3 +8,4 @@ pyproj
 geopandas
 python-dotenv
 paramiko
+Pillow

@@ -1,5 +1,6 @@
 {
   "history_minutes": 60,
+  "workers": 4,
 
   "radars": ["brz", "gdy", "gsa", "leg", "pas", "poz", "ram", "rze", "swi", "uzr"],
 

@@ -46,14 +46,15 @@ def get_list_of_files(path, product_type="oper"):
     return df
 
 
-def download_file(url, output_path, max_retries=5):
-    """Pobiera plik z URL z retry i backoff wykładniczym."""
+def download_file(url, output_path, max_retries=5, chunk_size=65536):
+    """Pobiera plik z URL strumieniowo (oszczędność RAM) z retry i backoff wykładniczym."""
     for attempt in range(1, max_retries + 1):
         try:
-            response = requests.get(url, timeout=(5, 30))
-            response.raise_for_status()
-            with open(output_path, "wb") as f:
-                f.write(response.content)
+            with requests.get(url, timeout=(5, 60), stream=True) as response:
+                response.raise_for_status()
+                with open(output_path, "wb") as f:
+                    for chunk in response.iter_content(chunk_size=chunk_size):
+                        f.write(chunk)
             return True
         except (ConnectTimeout, ReadTimeout):
             if attempt == max_retries:

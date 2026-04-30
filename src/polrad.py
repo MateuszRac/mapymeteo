@@ -1,3 +1,4 @@
+import functools
 import h5py
 import json
 import os
@@ -11,11 +12,36 @@ import matplotlib.colors as mcolors
 from matplotlib.colors import BoundaryNorm, ListedColormap, Normalize
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import numpy as np
+from PIL import Image
 from pyproj import Proj, Transformer
 
 # ─────────────────────────────────────────────────────────
 #  Dekodowanie pliku HDF5 z IMGW
 # ─────────────────────────────────────────────────────────
+
+@functools.lru_cache(maxsize=32)
+def _cached_mesh(UL_lon, UL_lat, UR_lon, UR_lat, LL_lon, LL_lat, LR_lon, LR_lat,
+                 xsize, ysize, projdef, output_projection):
+    """Buduje siatkę współrzędnych — wynik cache'owany dla tego samego produktu/radaru."""
+    lonlat_to_radar = Transformer.from_proj(Proj("EPSG:4326"), Proj(projdef), always_xy=True)
+    radar_to_out    = Transformer.from_proj(Proj(projdef), Proj(output_projection), always_xy=True)
+
+    corners_in = [(LL_lon, LL_lat), (LR_lon, LR_lat), (UL_lon, UL_lat), (UR_lon, UR_lat)]
+    (LL_x, LL_y), (LR_x, LR_y), (UL_x, UL_y), (UR_x, UR_y) = [
+        lonlat_to_radar.transform(lon, lat) for lon, lat in corners_in
+    ]
+
+    u = np.linspace(0, 1, xsize + 1)
+    v = np.linspace(0, 1, ysize + 1)
+    U, V = np.meshgrid(u, v)
+
+    X = (1-U)*(1-V)*LL_x + U*(1-V)*LR_x + (1-U)*V*UL_x + U*V*UR_x
+    Y = (1-U)*(1-V)*LL_y + U*(1-V)*LR_y + (1-U)*V*UL_y + U*V*UR_y
+
+    lon_mesh, lat_mesh = radar_to_out.transform(X, Y)
+    # Return copies so cached arrays are never mutated by callers
+    return lon_mesh.copy(), lat_mesh.copy(), lonlat_to_radar
+
 
 def decode_h5_file(file_path, output_projection="EPSG:4326"):
     """Wczytuje plik HDF5 IMGW i zwraca słownik z siatką lon/lat oraz danymi radarowymi."""
@@ -41,7 +67,20 @@ def decode_h5_file(file_path, output_projection="EPSG:4326"):
         starttime = what_ds.attrs["starttime"].decode()
         start_date = datetime.strptime(f"{startdate}{starttime}", "%Y%m%d%H%M%S")
 
-        lon_mesh, lat_mesh, lonlat_2_radar = _build_lonlat_mesh(where, output_projection)
+        # Wyciągnij skalarne parametry siatki (hashowalne → możliwe lru_cache)
+        xsize   = int(where.attrs["xsize"])
+        ysize   = int(where.attrs["ysize"])
+        projdef = where.attrs["projdef"].decode()
+        projdef = projdef.replace("+ellps=sphere", "+R=6378137 +nadgrids=@null +no_defs")
+        UL_lon, UL_lat = float(where.attrs["UL_lon"]), float(where.attrs["UL_lat"])
+        UR_lon, UR_lat = float(where.attrs["UR_lon"]), float(where.attrs["UR_lat"])
+        LL_lon, LL_lat = float(where.attrs["LL_lon"]), float(where.attrs["LL_lat"])
+        LR_lon, LR_lat = float(where.attrs["LR_lon"]), float(where.attrs["LR_lat"])
+
+        lon_mesh, lat_mesh, lonlat_2_radar = _cached_mesh(
+            UL_lon, UL_lat, UR_lon, UR_lat, LL_lon, LL_lat, LR_lon, LR_lat,
+            xsize, ysize, projdef, output_projection,
+        )
 
         radar_data = {}
         for ds_name in datasets:
@@ -77,38 +116,17 @@ def _decode_radar_array(dset, what_ds):
 
 
 def _build_lonlat_mesh(where, output_projection="EPSG:4326"):
-    """Buduje siatkę lon/lat z metadanych HDF5 metodą interpolacji dwuliniowej."""
-    UL_lon, UL_lat = where.attrs["UL_lon"], where.attrs["UL_lat"]
-    UR_lon, UR_lat = where.attrs["UR_lon"], where.attrs["UR_lat"]
-    LL_lon, LL_lat = where.attrs["LL_lon"], where.attrs["LL_lat"]
-    LR_lon, LR_lat = where.attrs["LR_lon"], where.attrs["LR_lat"]
-
-    xsize = int(where.attrs["xsize"])
-    ysize = int(where.attrs["ysize"])
-
+    """Buduje siatkę lon/lat z metadanych HDF5 — wrapper dla _cached_mesh (backward compat)."""
     projdef = where.attrs["projdef"].decode()
-    # Zamiana przestarzałego +ellps=sphere na równoważne parametry pyproj
     projdef = projdef.replace("+ellps=sphere", "+R=6378137 +nadgrids=@null +no_defs")
-
-    lonlat_to_radar = Transformer.from_proj(Proj("EPSG:4326"), Proj(projdef), always_xy=True)
-    radar_to_out    = Transformer.from_proj(Proj(projdef), Proj(output_projection), always_xy=True)
-
-    # Narożniki w układzie radaru
-    corners_in = [(LL_lon, LL_lat), (LR_lon, LR_lat), (UL_lon, UL_lat), (UR_lon, UR_lat)]
-    (LL_x, LL_y), (LR_x, LR_y), (UL_x, UL_y), (UR_x, UR_y) = [
-        lonlat_to_radar.transform(lon, lat) for lon, lat in corners_in
-    ]
-
-    # Interpolacja dwuliniowa na regularną siatkę pikseli
-    u = np.linspace(0, 1, xsize + 1)
-    v = np.linspace(0, 1, ysize + 1)
-    U, V = np.meshgrid(u, v)
-
-    X = (1-U)*(1-V)*LL_x + U*(1-V)*LR_x + (1-U)*V*UL_x + U*V*UR_x
-    Y = (1-U)*(1-V)*LL_y + U*(1-V)*LR_y + (1-U)*V*UL_y + U*V*UR_y
-
-    lon_mesh, lat_mesh = radar_to_out.transform(X, Y)
-    return lon_mesh, lat_mesh, lonlat_to_radar
+    return _cached_mesh(
+        float(where.attrs["UL_lon"]), float(where.attrs["UL_lat"]),
+        float(where.attrs["UR_lon"]), float(where.attrs["UR_lat"]),
+        float(where.attrs["LL_lon"]), float(where.attrs["LL_lat"]),
+        float(where.attrs["LR_lon"]), float(where.attrs["LR_lat"]),
+        int(where.attrs["xsize"]),    int(where.attrs["ysize"]),
+        projdef, output_projection,
+    )
 
 
 # ─────────────────────────────────────────────────────────
@@ -334,18 +352,14 @@ def plot_image(radar_data, output_file, gdf_shp_1, gdf_shp_2,
     plt.close()
 
 
-def render_web_overlay(radar_data, output_png, dataset_key="dataset1",
-                       dpi=250, size=10):
+def render_web_overlay(radar_data, output_png, dataset_key="dataset1"):
     """
     Generuje przezroczysty PNG w projekcji EPSG:3857 do L.imageOverlay w Leaflet.
 
-    Leaflet renderuje imageOverlay liniowo w Web Mercatorze (EPSG:3857).
-    Żeby piksele pokrywały się z podkładem mapy, obraz musi być wygenerowany
-    w tej samej projekcji — inaczej wystąpią błędy rozmieszczenia przy wysokich
-    szerokościach geograficznych.
+    Używa PIL zamiast matplotlib — wielokrotnie szybszy render, mniejsze zużycie RAM.
+    Obraz ma rozdzielczość natywną radaru (bez upscale'u), co zmniejsza rozmiar pliku.
 
-    radar_data musi być zdekodowany z output_projection="EPSG:3857"
-    (patrz decode_h5_file).
+    radar_data musi być zdekodowany z output_projection="EPSG:3857".
 
     Zwraca:
       bounds: [[lat_sw, lon_sw], [lat_ne, lon_ne]]  (EPSG:4326, format Leaflet)
@@ -354,31 +368,25 @@ def render_web_overlay(radar_data, output_png, dataset_key="dataset1",
     cmap, norm, _ = color_palette(radar_data["quantity"], ctype="imgw")
     data = radar_data["radar_data"][dataset_key]
 
-    # Siatka w metrach EPSG:3857
     x_mesh = radar_data["lon_mesh"]
     y_mesh = radar_data["lat_mesh"]
     x_min, x_max = float(x_mesh.min()), float(x_mesh.max())
     y_min, y_max = float(y_mesh.min()), float(y_mesh.max())
 
-    # Konwersja narożników do EPSG:4326 — potrzebne przez Leaflet bounds
+    # Konwersja narożników do EPSG:4326 (format Leaflet bounds)
     to_4326 = Transformer.from_crs("EPSG:3857", "EPSG:4326", always_xy=True)
     lon_sw, lat_sw = to_4326.transform(x_min, y_min)
     lon_ne, lat_ne = to_4326.transform(x_max, y_max)
 
-    # Figura bez marginesów — oś wypełnia całą figurę (kluczowe dla alignmentu)
-    fig = plt.figure(figsize=(size, size), dpi=dpi, frameon=False)
-    ax = fig.add_axes([0, 0, 1, 1])
+    # Zastosuj paletę kolorów na tablicy numpy — bez tworzenia figury matplotlib
+    data_ma = np.ma.masked_invalid(data)
+    rgba_float = cmap(norm(data_ma))           # (H, W, 4), wartości [0, 1]
+    rgba_uint8 = (rgba_float * 255).astype(np.uint8)
 
-    ax.pcolormesh(x_mesh, y_mesh, data, cmap=cmap, norm=norm, shading="flat")
+    # Odwróć pionowo: PIL ma row-0 = góra obrazu = północ (tak jak matplotlib savefig)
+    rgba_uint8 = np.flipud(rgba_uint8)
 
-    ax.set_aspect("auto")          # rozciągnij do krawędzi, nie zachowuj proporcji
-    ax.set_xlim(x_min, x_max)
-    ax.set_ylim(y_min, y_max)
-    ax.axis("off")
-
-    # pad_inches=0 i BEZ bbox_inches='tight' — zapisuje dokładnie figsize bez przycięcia
-    plt.savefig(output_png, dpi=dpi, pad_inches=0, transparent=True)
-    plt.close()
+    Image.fromarray(rgba_uint8, mode="RGBA").save(output_png, "PNG")
 
     return {
         "bounds":    [[lat_sw, lon_sw], [lat_ne, lon_ne]],

@@ -16,6 +16,8 @@ import json
 import logging
 import os
 import sys
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -142,12 +144,12 @@ def _to_remote(local_path: Path) -> str:
 #  Przetwarzanie jednej ścieżki IMGW
 # ─────────────────────────────────────────────────────────
 
-def process_path(path_info, cfg, ftp_session=None):
+def process_path(path_info, cfg, manifest, manifest_lock, ftp_uploader=None):
     """
     Dla jednej ścieżki IMGW:
       - usuwa lokalne obrazy starsze niż history_minutes (+ zdalne na FTP),
       - generuje obrazy dla plików w oknie, których PNG jeszcze nie ma,
-      - uploaduje nowe pliki na FTP.
+      - uploaduje nowe pliki na FTP (własna sesja per-wątek).
     Zwraca liczbę nowo wygenerowanych overlayów.
     """
     history_minutes = cfg.get("history_minutes", 60)
@@ -177,103 +179,100 @@ def process_path(path_info, cfg, ftp_session=None):
     if not units:
         units = [None]
 
-    manifest = load_manifest()
-    total    = 0
-    manifest_changed = False
+    total = 0
 
-    for unit in units:
-        state_key   = f"{key_prefix}__{unit}" if unit else key_prefix
-        product_key = state_key
-        unit_label  = cfg["unit_labels"].get(unit, unit) if unit else ""
-        label       = f"{label_base} – {unit_label}" if unit_label else label_base
+    # Każdy wątek tworzy własną sesję FTP — brak współdzielenia połączenia
+    ctx = ftp_uploader.session() if ftp_uploader else contextlib.nullcontext()
+    with ctx as ftp_session:
+        for unit in units:
+            state_key   = f"{key_prefix}__{unit}" if unit else key_prefix
+            product_key = state_key
+            unit_label  = cfg["unit_labels"].get(unit, unit) if unit else ""
+            label       = f"{label_base} – {unit_label}" if unit_label else label_base
 
-        df_unit     = df[df["unit"] == unit] if unit else df
-        overlay_dir = OVERLAY_DIR / product_key
-        overlay_dir.mkdir(parents=True, exist_ok=True)
+            df_unit     = df[df["unit"] == unit] if unit else df
+            overlay_dir = OVERLAY_DIR / product_key
+            overlay_dir.mkdir(parents=True, exist_ok=True)
 
-        # ── 1. Usuń obrazy poza oknem historii ───────────────────────────────
-        deleted_count = 0
-        for png_file in sorted(overlay_dir.glob("*.png")):
-            try:
-                png_ts = datetime.strptime(png_file.stem, "%Y%m%d%H%M%S")
-            except ValueError:
+            # ── 1. Usuń obrazy poza oknem historii ───────────────────────────────
+            deleted_count = 0
+            for png_file in sorted(overlay_dir.glob("*.png")):
+                try:
+                    png_ts = datetime.strptime(png_file.stem, "%Y%m%d%H%M%S")
+                except ValueError:
+                    continue
+                if png_ts < cutoff:
+                    log.info("[%s] Usuwam stary obraz: %s", product_key, png_file.name)
+                    png_file.unlink()
+                    json_file = overlay_dir / f"{png_file.stem}.json"
+                    json_file.unlink(missing_ok=True)
+                    if ftp_session:
+                        ftp_session.delete(_to_remote(png_file))
+                        ftp_session.delete(_to_remote(json_file))
+                    deleted_count += 1
+
+            if deleted_count:
+                log.info("[%s] Usunięto %d starych obrazów (poza oknem %d min)",
+                         product_key, deleted_count, history_minutes)
+
+            with manifest_lock:
+                manifest_remove_before(manifest, product_key, cutoff_iso)
+
+            # ── 2. Ustal które pliki z okna wymagają wygenerowania ───────────────
+            existing_stems = {f.stem for f in overlay_dir.glob("*.png")}
+            df_window = df_unit[
+                df_unit["timestamp"].notna() & (df_unit["timestamp"] >= cutoff)
+            ]
+            df_new = df_window[~df_window["timestamp"].apply(
+                lambda t: t.strftime("%Y%m%d%H%M%S")
+            ).isin(existing_stems)]
+
+            log.info("[%s] Okno %d min: %d dostępnych, %d już istnieje, %d do wygenerowania",
+                     product_key, history_minutes,
+                     len(df_window), len(existing_stems), len(df_new))
+
+            if df_new.empty:
                 continue
-            if png_ts < cutoff:
-                log.info("[%s] Usuwam stary obraz: %s", product_key, png_file.name)
-                png_file.unlink()
-                json_file = overlay_dir / f"{png_file.stem}.json"
-                json_file.unlink(missing_ok=True)
+
+            # ── 3. Pobierz i wygeneruj nowe obrazy ───────────────────────────────
+            # Każdy produkt ma własny podkatalog — brak kolizji nazw plików między wątkami
+            product_data_dir = DATA_DIR / key_prefix.replace(":", "_")
+            product_data_dir.mkdir(parents=True, exist_ok=True)
+
+            for _, row in df_new.iterrows():
+                h5_path = product_data_dir / row["filename"]
+                log.info("[%s] Pobieram: %s", product_key, row["filename"])
+
+                if not download_file(row["url"], str(h5_path)):
+                    log.error("[%s] Nie udało się pobrać: %s", product_key, row["filename"])
+                    continue
+
+                try:
+                    radar_data = decode_h5_file(str(h5_path), output_projection="EPSG:3857")
+                except Exception as e:
+                    log.error("[%s] Błąd dekodowania HDF5 (%s): %s",
+                              product_key, row["filename"], e)
+                    h5_path.unlink(missing_ok=True)
+                    continue
+
+                ts_str    = radar_data["start_date"].strftime("%Y%m%d%H%M%S")
+                png_path  = overlay_dir / f"{ts_str}.png"
+                json_path = overlay_dir / f"{ts_str}.json"
+
+                frame_meta = render_web_overlay(radar_data, str(png_path))
+                save_overlay_metadata(frame_meta, str(json_path))
+                log.info("[%s] Wygenerowano: %s.png", product_key, ts_str)
+
+                image_rel = "../" + str(png_path.relative_to(PROJECT_PATH)).replace("\\", "/")
+                with manifest_lock:
+                    manifest_add_frame(manifest, product_key, label, frame_meta, image_rel)
+
                 if ftp_session:
-                    ftp_session.delete(_to_remote(png_file))
-                    ftp_session.delete(_to_remote(json_file))
-                deleted_count += 1
-                manifest_changed = True
+                    ftp_session.upload(png_path, _to_remote(png_path))
+                    ftp_session.upload(json_path, _to_remote(json_path))
 
-        if deleted_count:
-            log.info("[%s] Usunięto %d starych obrazów (poza oknem %d min)",
-                     product_key, deleted_count, history_minutes)
-
-        manifest_remove_before(manifest, product_key, cutoff_iso)
-
-        # ── 2. Ustal które pliki z okna wymagają wygenerowania ───────────────
-        existing_stems = {f.stem for f in overlay_dir.glob("*.png")}
-        df_window = df_unit[
-            df_unit["timestamp"].notna() & (df_unit["timestamp"] >= cutoff)
-        ]
-        df_new = df_window[~df_window["timestamp"].apply(
-            lambda t: t.strftime("%Y%m%d%H%M%S")
-        ).isin(existing_stems)]
-
-        log.info("[%s] Okno %d min: %d dostępnych, %d już istnieje, %d do wygenerowania",
-                 product_key, history_minutes,
-                 len(df_window), len(existing_stems), len(df_new))
-
-        if df_new.empty:
-            continue
-
-        # ── 3. Pobierz i wygeneruj nowe obrazy ───────────────────────────────
-        DATA_DIR.mkdir(parents=True, exist_ok=True)
-
-        for _, row in df_new.iterrows():
-            h5_path = DATA_DIR / row["filename"]
-            log.info("[%s] Pobieram: %s", product_key, row["filename"])
-
-            if not download_file(row["url"], str(h5_path)):
-                log.error("[%s] Nie udało się pobrać: %s", product_key, row["filename"])
-                continue
-
-            try:
-                radar_data = decode_h5_file(str(h5_path), output_projection="EPSG:3857")
-            except Exception as e:
-                log.error("[%s] Błąd dekodowania HDF5 (%s): %s",
-                          product_key, row["filename"], e)
                 h5_path.unlink(missing_ok=True)
-                continue
-
-            ts_str    = radar_data["start_date"].strftime("%Y%m%d%H%M%S")
-            png_path  = overlay_dir / f"{ts_str}.png"
-            json_path = overlay_dir / f"{ts_str}.json"
-
-            frame_meta = render_web_overlay(radar_data, str(png_path))
-            save_overlay_metadata(frame_meta, str(json_path))
-            log.info("[%s] Wygenerowano: %s.png", product_key, ts_str)
-
-            image_rel = "../" + str(png_path.relative_to(PROJECT_PATH)).replace("\\", "/")
-            manifest_add_frame(manifest, product_key, label, frame_meta, image_rel)
-
-            if ftp_session:
-                ftp_session.upload(png_path, _to_remote(png_path))
-                ftp_session.upload(json_path, _to_remote(json_path))
-
-            h5_path.unlink(missing_ok=True)
-            total += 1
-            manifest_changed = True
-
-    if manifest_changed:
-        save_manifest(manifest)
-        if ftp_session:
-            log.info("[%s] Uploading manifest.json na FTP", key_prefix)
-            ftp_session.upload(MANIFEST, _to_remote(MANIFEST))
+                total += 1
 
     log.info("[%s] Gotowe: +%d nowych overlayów.", key_prefix, total)
     return total
@@ -331,16 +330,37 @@ def main():
                  uploader.host, uploader.port,
                  " (FTPS)" if uploader.tls else "",
                  FTP_IMG_DIR)
-        ctx = uploader.session()
     else:
         log.warning("FTP niekonfigurowany (brak FTP_HOST/FTP_USER w .env) — transfer pominięty")
-        ctx = contextlib.nullcontext()
+        uploader = None
 
-    # ── Przetwarzanie ────────────────────────────────────────────────────────
-    total = 0
-    with ctx as ftp_session:
+    # ── Przetwarzanie równoległe ─────────────────────────────────────────────
+    manifest      = load_manifest()
+    manifest_lock = threading.Lock()
+
+    max_workers = min(cfg.get("workers", os.cpu_count() or 4), len(selected))
+    log.info("Wątki: %d", max_workers)
+
+    total   = 0
+    futures = {}
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
         for path_info in selected:
-            total += process_path(path_info, cfg, ftp_session=ftp_session)
+            f = executor.submit(process_path, path_info, cfg, manifest, manifest_lock, uploader)
+            futures[f] = path_info
+
+        for f in as_completed(futures):
+            pi = futures[f]
+            try:
+                total += f.result()
+            except Exception as e:
+                log.error("Błąd [%s]: %s", pi["key_prefix"], e, exc_info=True)
+
+    # ── Manifest i finalne FTP ────────────────────────────────────────────────
+    save_manifest(manifest)
+    if uploader:
+        log.info("Uploading manifest.json na FTP")
+        with uploader.session() as sess:
+            sess.upload(MANIFEST, _to_remote(MANIFEST))
 
     log.info("═══ fetch_new koniec — łącznie wygenerowanych: %d ═══", total)
     return 0
