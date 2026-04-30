@@ -1,0 +1,10 @@
+pandas
+numpy
+requests
+beautifulsoup4
+h5py
+matplotlib
+pyproj
+geopandas
+python-dotenv
+paramiko
