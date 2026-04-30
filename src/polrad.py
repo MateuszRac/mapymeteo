@@ -7,6 +7,8 @@ from datetime import datetime
 
 import matplotlib
 matplotlib.use("Agg")
+from matplotlib.backends.backend_agg import FigureCanvasAgg
+from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 from matplotlib.colors import BoundaryNorm, ListedColormap, Normalize
@@ -356,14 +358,14 @@ def render_web_overlay(radar_data, output_png, dataset_key="dataset1"):
     """
     Generuje przezroczysty PNG w projekcji EPSG:3857 do L.imageOverlay w Leaflet.
 
-    Używa PIL zamiast matplotlib — wielokrotnie szybszy render, mniejsze zużycie RAM.
-    Obraz ma rozdzielczość natywną radaru (bez upscale'u), co zmniejsza rozmiar pliku.
+    Używa Figure + FigureCanvasAgg (bez globalnego plt) — thread-safe i poprawna
+    projekcja przez pcolormesh, który renderuje każdą komórkę siatki jako osobny
+    czworokąt. Prosta konwersja PIL data→RGBA byłaby błędna, bo siatka EPSG:3857
+    jest zniekształcona względem prostokąta (bilinearna interpolacja w układzie radaru).
+
+    Renderuje przy natywnej rozdzielczości danych (bez upscale'u do 2500 px).
 
     radar_data musi być zdekodowany z output_projection="EPSG:3857".
-
-    Zwraca:
-      bounds: [[lat_sw, lon_sw], [lat_ne, lon_ne]]  (EPSG:4326, format Leaflet)
-      timestamp, quantity, product, system
     """
     cmap, norm, _ = color_palette(radar_data["quantity"], ctype="imgw")
     data = radar_data["radar_data"][dataset_key]
@@ -378,15 +380,29 @@ def render_web_overlay(radar_data, output_png, dataset_key="dataset1"):
     lon_sw, lat_sw = to_4326.transform(x_min, y_min)
     lon_ne, lat_ne = to_4326.transform(x_max, y_max)
 
-    # Zastosuj paletę kolorów na tablicy numpy — bez tworzenia figury matplotlib
-    data_ma = np.ma.masked_invalid(data)
-    rgba_float = cmap(norm(data_ma))           # (H, W, 4), wartości [0, 1]
-    rgba_uint8 = (rgba_float * 255).astype(np.uint8)
+    # Figura przy natywnej rozdzielczości danych — np. 480×480 zamiast 2500×2500
+    ny, nx = data.shape
+    dpi = 100
+    fig = Figure(figsize=(nx / dpi, ny / dpi), dpi=dpi, frameon=False)
+    canvas = FigureCanvasAgg(fig)
+    ax = fig.add_axes([0, 0, 1, 1])
 
-    # Odwróć pionowo: PIL ma row-0 = góra obrazu = północ (tak jak matplotlib savefig)
-    rgba_uint8 = np.flipud(rgba_uint8)
+    # Przezroczyste tło figury i osi
+    fig.patch.set_alpha(0)
+    ax.patch.set_alpha(0)
 
-    Image.fromarray(rgba_uint8, mode="RGBA").save(output_png, "PNG")
+    # pcolormesh poprawnie rysuje zniekształconą siatkę EPSG:3857 jako czworokąty
+    ax.pcolormesh(x_mesh, y_mesh, data, cmap=cmap, norm=norm, shading="flat")
+    ax.set_xlim(x_min, x_max)
+    ax.set_ylim(y_min, y_max)
+    ax.set_aspect("auto")
+    ax.axis("off")
+
+    canvas.draw()
+    buf_w, buf_h = canvas.get_width_height()
+    buf = np.frombuffer(canvas.buffer_rgba(), dtype=np.uint8).reshape(buf_h, buf_w, 4)
+
+    Image.fromarray(buf, "RGBA").save(output_png, "PNG")
 
     return {
         "bounds":    [[lat_sw, lon_sw], [lat_ne, lon_ne]],
