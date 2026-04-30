@@ -1,5 +1,38 @@
+# Project-specific
 polrad/
+
+# Environments
 .env
-.venv
-.claude
-.cache
+.venv/
+
+# Claude / tooling cache
+.claude/
+.cache/
+
+# Logs
+*.log
+logs/
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+
+# Project-specific
+polrad/
+
+# Environments
+.env
+.venv/
+
+# Claude / tooling cache
+.claude/
+.cache/
+
+# Logs
+*.log
+logs/
+
+# Python cache
+__pycache__/
+*.py[cod]
