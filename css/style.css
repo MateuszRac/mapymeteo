@@ -126,6 +126,14 @@ body {
 /* ── Opacity ── */
 .opacity-slider { width: 72px; accent-color: var(--accent); cursor: pointer; }
 
+/* ── Speed ── */
+.speed-group {
+  display: flex; align-items: center; gap: 5px;
+  margin-left: 8px;
+}
+.ctrl-label { font-size: .8rem; line-height: 1; }
+.speed-slider { width: 64px; accent-color: var(--accent); cursor: pointer; }
+
 /* ── Status ── */
 #status {
   font-size: .72rem;
@@ -209,4 +217,5 @@ body {
   .tb-group { padding: 0 7px; gap: 4px; }
   .opacity-slider { width: 50px; }
   #status { display: none; }
+  .speed-group { display: none; }
 }

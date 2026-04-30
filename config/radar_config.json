@@ -39,7 +39,7 @@
 
   "radar_stations": [
     {"id": "brz", "name": "Brzuchania",         "lat": 50.394169, "lon": 20.083228},
-    {"id": "gdy", "name": "Gdynia",              "lat": 54.461099, "lon": 18.408252},
+    {"id": "gdy", "name": "Gdynia",              "lat": 54.500814, "lon": 18.271897},
     {"id": "gsa", "name": "Góra Świętej Anny",  "lat": 50.463864, "lon": 18.153211},
     {"id": "leg", "name": "Legionowo",           "lat": 52.405250, "lon": 20.961110},
     {"id": "pas", "name": "Pastewnik",           "lat": 50.892460, "lon": 16.039494},

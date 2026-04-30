@@ -10,14 +10,22 @@ export function initMap() {
 }
 
 let overlay  = null;
-const dotEls = {};   // stationId → <div class="radar-dot">
+const dotEls = {};
 
 export function showFrame(map, frame, opacity) {
   const bounds = L.latLngBounds(frame.bounds[0], frame.bounds[1]);
   const src    = frame.image + '?t=' + frame.timestamp;
+
+  // Usuń stary overlay tylko gdy zmieniają się bounds (inny radar/produkt).
+  // Dzięki temu nie miga stary obraz innego radaru w nowej lokalizacji.
+  // Dla animacji tego samego produktu (te same bounds) tylko URL się zmienia.
+  if (overlay && !overlay.getBounds().equals(bounds, 0.001)) {
+    overlay.remove();
+    overlay = null;
+  }
+
   if (overlay) {
     overlay.setUrl(src);
-    overlay.setBounds(bounds);
     overlay.setOpacity(opacity);
   } else {
     overlay = L.imageOverlay(src, bounds, { opacity, interactive: false }).addTo(map);

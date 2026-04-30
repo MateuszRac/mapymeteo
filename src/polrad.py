@@ -380,10 +380,11 @@ def render_web_overlay(radar_data, output_png, dataset_key="dataset1"):
     lon_sw, lat_sw = to_4326.transform(x_min, y_min)
     lon_ne, lat_ne = to_4326.transform(x_max, y_max)
 
-    # Figura przy natywnej rozdzielczości danych — np. 480×480 zamiast 2500×2500
+    # Skala 2× daje 2× więcej pikseli w każdym wymiarze bez zmiany proporcji
     ny, nx = data.shape
+    scale = 2
     dpi = 100
-    fig = Figure(figsize=(nx / dpi, ny / dpi), dpi=dpi, frameon=False)
+    fig = Figure(figsize=(nx * scale / dpi, ny * scale / dpi), dpi=dpi, frameon=False)
     canvas = FigureCanvasAgg(fig)
     ax = fig.add_axes([0, 0, 1, 1])
 

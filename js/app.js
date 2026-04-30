@@ -1,17 +1,19 @@
 import { REFRESH_MS } from './config.js';
 import {
-  loadAll, refreshManifest, buildIndex,
-  getStationLabel, getProductLabel, getUnitLabel, resolveKey,
+  loadAll, refreshManifest, buildIndex, parseKey,
+  getStationLabel, getProductLabel,
 } from './data.js';
 import { initMap, showFrame, clearOverlay, setOverlayOpacity, addRadarMarkers, setActiveMarker } from './map.js';
 import { createPlayer } from './player.js';
 
+// Prędkości animacji: suwak 1..5 = wolno..szybko
+const SPEED_STEPS = [2000, 1200, 800, 500, 250];
+
 // ── DOM ───────────────────────────────────────────────────────────────────────
 const stationSel  = document.getElementById('station-select');
 const productBtns = document.getElementById('product-btns');
-const unitSection = document.getElementById('unit-section');
-const unitSel     = document.getElementById('unit-select');
 const opacitySl   = document.getElementById('opacity-slider');
+const speedSl     = document.getElementById('speed-slider');
 const statusEl    = document.getElementById('status');
 const loadingEl   = document.getElementById('loading');
 
@@ -23,15 +25,14 @@ let map       = null;
 let player    = null;
 
 let selStation = null;
-let selProduct = null;
-let selUnit    = null;
+let selKey     = null;   // pełny klucz manifestu, np. "BRZ_0_5.ppi__DBZH"
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 async function init() {
   try {
     ({ config, manifest } = await loadAll());
-    index = buildIndex(manifest, config);
-    map   = initMap();
+    index  = buildIndex(manifest, config);
+    map    = initMap();
     player = createPlayer({
       onFrame: frame => showFrame(map, frame, parseInt(opacitySl.value, 10) / 100),
       onClear: clearOverlay,
@@ -53,9 +54,9 @@ function populateStations() {
   const compoIds = index.stationIds.filter(id => id === 'COMPO');
   const radarIds = index.stationIds.filter(id => id !== 'COMPO');
 
-  if (compoIds.length) {
-    compoIds.forEach(id => stationSel.appendChild(makeOption(id, getStationLabel(id, config))));
-  }
+  compoIds.forEach(id =>
+    stationSel.appendChild(makeOption(id, getStationLabel(id, config)))
+  );
   if (radarIds.length) {
     const og = document.createElement('optgroup');
     og.label = 'Radary';
@@ -70,50 +71,41 @@ function makeOption(value, label) {
   return o;
 }
 
+// ── Etykieta przycisku: produkt + jednostka ───────────────────────────────────
+function itemLabel(item) {
+  let prod = getProductLabel(item.productType, config);
+  // Dla COMPO (stacja "Polska") usuń redundantny prefix "Polska - "
+  if (item.isCompo && prod.startsWith('Polska - ')) {
+    prod = prod.slice('Polska - '.length);
+  }
+  // Capitalize
+  prod = prod.charAt(0).toUpperCase() + prod.slice(1);
+  // Dołącz kod jednostki — zwięzły identyfikator (DBZH, RATE, VRADH…)
+  return item.unit ? `${prod} · ${item.unit}` : prod;
+}
+
 // ── Przyciski produktów ───────────────────────────────────────────────────────
 function rebuildProductBtns(stationId) {
   productBtns.innerHTML = '';
-  const station = index.byStation[stationId];
-  if (!station) {
+  const items = index.byStation[stationId]?.items ?? [];
+  if (!items.length) {
     productBtns.innerHTML = '<span class="no-data-msg">brak danych</span>';
     return;
   }
-  Object.keys(station.products).forEach(pt => {
+  items.forEach(item => {
     const btn = document.createElement('button');
-    btn.className    = 'prod-btn';
-    btn.dataset.pt   = pt;
-    btn.textContent  = getProductLabel(pt, config);
-    btn.addEventListener('click', () => selectProduct(pt));
+    btn.className   = 'prod-btn';
+    btn.dataset.key = item.key;
+    btn.textContent = itemLabel(item);
+    btn.addEventListener('click', () => selectKey(item.key));
     productBtns.appendChild(btn);
   });
 }
 
-function markActiveProduct(pt) {
+function markActiveBtn(key) {
   productBtns.querySelectorAll('.prod-btn').forEach(b =>
-    b.classList.toggle('active', b.dataset.pt === pt)
+    b.classList.toggle('active', b.dataset.key === key)
   );
-}
-
-// ── Selector jednostek ────────────────────────────────────────────────────────
-function rebuildUnitSelector(stationId, productType) {
-  const prod  = index.byStation[stationId]?.products?.[productType];
-  const units = prod?.units ?? [];
-
-  // Filtruj puste (produkty bez jednostki)
-  const realUnits = units.filter(u => u !== '');
-
-  if (realUnits.length <= 1) {
-    unitSection.style.display = 'none';
-    return;
-  }
-
-  unitSection.style.display = 'flex';
-  unitSel.innerHTML = '';
-  realUnits.forEach(u => {
-    unitSel.appendChild(makeOption(u, getUnitLabel(u, config)));
-  });
-  if (selUnit && realUnits.includes(selUnit)) unitSel.value = selUnit;
-  else unitSel.value = realUnits[0];
 }
 
 // ── Logika wyboru ─────────────────────────────────────────────────────────────
@@ -128,31 +120,33 @@ function selectStation(stationId) {
   setActiveMarker(stationId);
   rebuildProductBtns(stationId);
 
-  const availTypes = Object.keys(index.byStation[stationId]?.products ?? {});
-  const keepProd   = selProduct && availTypes.includes(selProduct) ? selProduct : availTypes[0];
-  selectProduct(keepProd);
+  const items = index.byStation[stationId]?.items ?? [];
+  if (!items.length) { selectKey(null); return; }
+
+  // Przy zmianie stacji próbuj zachować ten sam typ produktu i jednostkę
+  let best = null;
+  if (selKey) {
+    const prev = parseKey(selKey);
+    best = items.find(i => i.productType === prev.productType && i.unit === prev.unit)
+        ?? items.find(i => i.productType === prev.productType)
+        ?? null;
+  }
+  selectKey((best ?? items[0]).key);
 }
 
-function selectProduct(productType) {
-  if (!productType) { player.loadFrames([]); return; }
-  selProduct = productType;
-  markActiveProduct(productType);
-
-  const prod    = index.byStation[selStation]?.products?.[productType];
-  const units   = (prod?.units ?? []).filter(u => u !== '');
-  const keepUnit = selUnit && units.includes(selUnit) ? selUnit : (units[0] ?? null);
-
-  rebuildUnitSelector(selStation, productType);
-  selUnit = keepUnit;
-  if (keepUnit) unitSel.value = keepUnit;
-
+function selectKey(key) {
+  selKey = key;
+  markActiveBtn(key);
   applySelection();
 }
 
 function applySelection() {
-  const key  = resolveKey(index, selStation, selProduct, selUnit);
-  if (!key) { statusEl.textContent = 'Brak danych'; player.loadFrames([]); return; }
-  const prod   = manifest.products[key];
+  if (!selKey) {
+    statusEl.textContent = 'Brak danych';
+    player.loadFrames([]);
+    return;
+  }
+  const prod   = manifest.products[selKey];
   const frames = prod?.frames ?? [];
   statusEl.textContent = `${frames.length} ramek`;
   player.loadFrames(frames);
@@ -160,19 +154,19 @@ function applySelection() {
 
 // ── Eventy ────────────────────────────────────────────────────────────────────
 stationSel.addEventListener('change', () => selectStation(stationSel.value));
-unitSel.addEventListener('change', () => {
-  selUnit = unitSel.value;
-  applySelection();
-});
+
 opacitySl.addEventListener('input', () =>
   setOverlayOpacity(parseInt(opacitySl.value, 10) / 100)
+);
+
+speedSl?.addEventListener('input', () =>
+  player?.setSpeed(SPEED_STEPS[parseInt(speedSl.value, 10) - 1])
 );
 
 // ── Auto-odświeżanie ──────────────────────────────────────────────────────────
 setInterval(async () => {
   try {
-    const oldKey   = resolveKey(index, selStation, selProduct, selUnit);
-    const oldCount = oldKey ? (manifest.products[oldKey]?.frames?.length ?? 0) : 0;
+    const oldCount = selKey ? (manifest.products[selKey]?.frames?.length ?? 0) : 0;
 
     manifest = await refreshManifest();
     index    = buildIndex(manifest, config);
@@ -181,9 +175,7 @@ setInterval(async () => {
     populateStations();
     stationSel.value = saved;
 
-    const newKey   = resolveKey(index, selStation, selProduct, selUnit);
-    const newCount = newKey ? (manifest.products[newKey]?.frames?.length ?? 0) : 0;
-
+    const newCount = selKey ? (manifest.products[selKey]?.frames?.length ?? 0) : 0;
     if (newCount !== oldCount) {
       applySelection();
       statusEl.textContent = `${newCount} ramek` +

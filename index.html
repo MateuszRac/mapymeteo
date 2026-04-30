@@ -32,11 +32,6 @@
     <div id="product-btns" class="btn-group"></div>
   </div>
 
-  <div class="tb-group" id="unit-section" style="display:none">
-    <label class="tb-label" for="unit-select">Jedn.</label>
-    <select id="unit-select" class="tb-select"></select>
-  </div>
-
   <div class="tb-group tb-group--right">
     <label class="tb-label" for="opacity-slider">🔆</label>
     <input id="opacity-slider" type="range" min="10" max="100" value="82"
@@ -56,6 +51,12 @@
   <div class="time-info">
     <span id="time-label">—</span>
     <span id="frame-count"></span>
+  </div>
+  <div class="speed-group" title="Prędkość animacji">
+    <span class="ctrl-label">🐢</span>
+    <input id="speed-slider" type="range" min="1" max="5" step="1" value="3"
+           class="speed-slider" />
+    <span class="ctrl-label">🐇</span>
   </div>
 </footer>
 

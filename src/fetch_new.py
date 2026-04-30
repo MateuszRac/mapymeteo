@@ -147,10 +147,13 @@ def _to_remote(local_path: Path) -> str:
 def process_path(path_info, cfg, manifest, manifest_lock, ftp_uploader=None):
     """
     Dla jednej ścieżki IMGW:
-      - usuwa lokalne obrazy starsze niż history_minutes (+ zdalne na FTP),
-      - generuje obrazy dla plików w oknie, których PNG jeszcze nie ma,
-      - uploaduje nowe pliki na FTP (własna sesja per-wątek).
-    Zwraca liczbę nowo wygenerowanych overlayów.
+      - usuwa lokalne pliki poza oknem historii,
+      - generuje i uploaduje nowe obrazy (własna sesja FTP per-wątek),
+      - zwraca (liczba nowych overlayów, lista ścieżek FTP do usunięcia).
+
+    Kasowanie ze zdalnego FTP jest celowo odroczone do main() — najpierw nowe
+    pliki muszą trafić na serwer i manifest musi być zaktualizowany, żeby
+    użytkownicy nigdy nie widzieli luki (404 na plik z manifestu).
     """
     history_minutes = cfg.get("history_minutes", 60)
     cutoff     = datetime.utcnow() - timedelta(minutes=history_minutes)
@@ -165,12 +168,12 @@ def process_path(path_info, cfg, manifest, manifest_lock, ftp_uploader=None):
     df = get_list_of_files(path)
     if df is None or df.empty:
         log.info("[%s] Brak plików na serwerze.", key_prefix)
-        return 0
+        return 0, []
 
     df = df[df["filename"].str.endswith(".h5")].copy()
     if df.empty:
         log.info("[%s] Brak plików .h5.", key_prefix)
-        return 0
+        return 0, []
 
     df = df.sort_values("timestamp")
     log.debug("[%s] Łącznie plików .h5 na serwerze: %d", key_prefix, len(df))
@@ -179,9 +182,9 @@ def process_path(path_info, cfg, manifest, manifest_lock, ftp_uploader=None):
     if not units:
         units = [None]
 
-    total = 0
+    total          = 0
+    ftp_to_delete  = []   # zdalny cleanup odroczony — wykonuje main() po uploadzię manifestu
 
-    # Każdy wątek tworzy własną sesję FTP — brak współdzielenia połączenia
     ctx = ftp_uploader.session() if ftp_uploader else contextlib.nullcontext()
     with ctx as ftp_session:
         for unit in units:
@@ -194,7 +197,7 @@ def process_path(path_info, cfg, manifest, manifest_lock, ftp_uploader=None):
             overlay_dir = OVERLAY_DIR / product_key
             overlay_dir.mkdir(parents=True, exist_ok=True)
 
-            # ── 1. Usuń obrazy poza oknem historii ───────────────────────────────
+            # ── 1. Lokalne kasowanie + zebranie ścieżek FTP do późniejszego usunięcia ──
             deleted_count = 0
             for png_file in sorted(overlay_dir.glob("*.png")):
                 try:
@@ -202,17 +205,18 @@ def process_path(path_info, cfg, manifest, manifest_lock, ftp_uploader=None):
                 except ValueError:
                     continue
                 if png_ts < cutoff:
-                    log.info("[%s] Usuwam stary obraz: %s", product_key, png_file.name)
+                    log.debug("[%s] Lokalnie usuwam: %s", product_key, png_file.name)
                     png_file.unlink()
                     json_file = overlay_dir / f"{png_file.stem}.json"
                     json_file.unlink(missing_ok=True)
-                    if ftp_session:
-                        ftp_session.delete(_to_remote(png_file))
-                        ftp_session.delete(_to_remote(json_file))
+                    # Rejestruj do usunięcia z FTP — nie kasujemy teraz
+                    if ftp_uploader:
+                        ftp_to_delete.append(_to_remote(png_file))
+                        ftp_to_delete.append(_to_remote(json_file))
                     deleted_count += 1
 
             if deleted_count:
-                log.info("[%s] Usunięto %d starych obrazów (poza oknem %d min)",
+                log.info("[%s] Lokalnie usunięto %d starych obrazów (poza oknem %d min)",
                          product_key, deleted_count, history_minutes)
 
             with manifest_lock:
@@ -234,8 +238,7 @@ def process_path(path_info, cfg, manifest, manifest_lock, ftp_uploader=None):
             if df_new.empty:
                 continue
 
-            # ── 3. Pobierz i wygeneruj nowe obrazy ───────────────────────────────
-            # Każdy produkt ma własny podkatalog — brak kolizji nazw plików między wątkami
+            # ── 3. Pobierz, wygeneruj i uploaduj nowe obrazy ─────────────────────
             product_data_dir = DATA_DIR / key_prefix.replace(":", "_")
             product_data_dir.mkdir(parents=True, exist_ok=True)
 
@@ -275,7 +278,7 @@ def process_path(path_info, cfg, manifest, manifest_lock, ftp_uploader=None):
                 total += 1
 
     log.info("[%s] Gotowe: +%d nowych overlayów.", key_prefix, total)
-    return total
+    return total, ftp_to_delete
 
 
 # ─────────────────────────────────────────────────────────
@@ -341,7 +344,8 @@ def main():
     max_workers = min(cfg.get("workers", os.cpu_count() or 4), len(selected))
     log.info("Wątki: %d", max_workers)
 
-    total   = 0
+    total          = 0
+    ftp_to_delete  = []
     futures = {}
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         for path_info in selected:
@@ -351,16 +355,24 @@ def main():
         for f in as_completed(futures):
             pi = futures[f]
             try:
-                total += f.result()
+                n, deletes = f.result()
+                total        += n
+                ftp_to_delete += deletes
             except Exception as e:
                 log.error("Błąd [%s]: %s", pi["key_prefix"], e, exc_info=True)
 
-    # ── Manifest i finalne FTP ────────────────────────────────────────────────
+    # ── Prawidłowa kolejność FTP: nowe pliki są już na serwerze ─────────────
+    # 1. Zapisz i wyślij manifest — od tej chwili klienci widzą nowy stan
+    # 2. Dopiero teraz kasuj stare pliki — manifest już na nie nie wskazuje
     save_manifest(manifest)
     if uploader:
-        log.info("Uploading manifest.json na FTP")
         with uploader.session() as sess:
+            log.info("Uploading manifest.json na FTP")
             sess.upload(MANIFEST, _to_remote(MANIFEST))
+            if ftp_to_delete:
+                log.info("Kasowanie %d starych plików z FTP", len(ftp_to_delete))
+                for remote_path in ftp_to_delete:
+                    sess.delete(remote_path)
 
     log.info("═══ fetch_new koniec — łącznie wygenerowanych: %d ═══", total)
     return 0

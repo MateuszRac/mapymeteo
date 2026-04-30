@@ -5,6 +5,7 @@ export function createPlayer({ onFrame, onClear }) {
   let frameIdx = 0;
   let timer    = null;
   let playing  = false;
+  let playMs   = PLAY_MS;
 
   const slider    = document.getElementById('time-slider');
   const timeLabel = document.getElementById('time-label');
@@ -16,7 +17,7 @@ export function createPlayer({ onFrame, onClear }) {
   function render() {
     if (!frames.length) return;
     const f = frames[frameIdx];
-    slider.value        = frameIdx;
+    slider.value         = frameIdx;
     timeLabel.textContent = f.timestamp.replace('T', ' ') + ' UTC';
     countEl.textContent   = `${frameIdx + 1} / ${frames.length}`;
     onFrame?.(f);
@@ -37,7 +38,12 @@ export function createPlayer({ onFrame, onClear }) {
     timer = setInterval(() => {
       frameIdx = (frameIdx + 1) % frames.length;
       render();
-    }, PLAY_MS);
+    }, playMs);
+  }
+
+  function setSpeed(ms) {
+    playMs = ms;
+    if (playing) { stop(); play(); }
   }
 
   function loadFrames(newFrames) {
@@ -59,7 +65,6 @@ export function createPlayer({ onFrame, onClear }) {
     }
   }
 
-  // Wiring
   btnPlay.addEventListener('click', () => playing ? stop() : play());
   btnPrev.addEventListener('click', () => {
     stop(); frameIdx = Math.max(0, frameIdx - 1); render();
@@ -81,6 +86,7 @@ export function createPlayer({ onFrame, onClear }) {
     loadFrames,
     stop,
     play,
+    setSpeed,
     get frameCount() { return frames.length; },
     get isPlaying()  { return playing; },
   };
