@@ -1,5 +1,5 @@
 {
-  "history_minutes": 10,
+  "history_minutes": 60,
 
   "radars": ["brz", "gdy", "gsa", "leg", "pas", "poz", "ram", "rze", "swi", "uzr"],
 
