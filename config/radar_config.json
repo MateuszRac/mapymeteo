@@ -1,0 +1,50 @@
+{
+  "history_minutes": 10,
+
+  "radars": ["brz", "gdy", "gsa", "leg", "pas", "poz", "ram", "rze", "swi", "uzr"],
+
+  "radar_products": ["0_5.ppi", "125.cappi", "200.dpsri", "200_etz.eht", "250.max"],
+
+  "compo_products": ["CAPPI.comp.cappi", "CMAX_250.comp.cmax", "DPSRI.comp.sri"],
+
+  "unit_labels": {
+    "DBZH":  "Odbiciowość [dBZ]",
+    "VRADH": "Wiatr radialny [m/s]",
+    "RATE":  "Natężenie opadu [mm/h]",
+    "KDP":   "KDP [°/km]",
+    "RHOHV": "Korelacja RhoHV",
+    "ZDR":   "ZDR [dB]",
+    "PHIDP": "PhiDP [°]",
+    "HGHT":  "Wysokość echa [km]",
+    "dBZ":   "Odbiciowość [dBZ]",
+    "V":     "Wiatr radialny [m/s]",
+    "dBR":   "Natężenie opadu [mm/h]",
+    "RhoHV": "Korelacja RhoHV",
+    "PhiDP": "PhiDP [°]"
+  },
+
+  "product_labels": {
+    "0_5.ppi":   "PPI 0.5°",
+    "125.cappi": "CAPPI 125km",
+    "200.dpsri": "DPSRI 200km",
+    "200.etz":   "ETZ 200km",
+    "250.max":   "MAX 250km",
+    "CAPPI.comp.cappi":  "Polska - odbiciowość CAPPI 1.5km",
+    "CMAX_250.comp.cmax": "Polska - odbiciowość maksymalna CMAX",
+    "DPSRI.comp.sri":    "Polska - natężenie opadu DPSRI",
+    "ETOP": "Wysokość wierzchołków echa"
+  },
+
+  "radar_stations": [
+    {"id": "brz", "name": "Brzuchania",         "lat": 50.394169, "lon": 20.083228},
+    {"id": "gdy", "name": "Gdynia",              "lat": 54.461099, "lon": 18.408252},
+    {"id": "gsa", "name": "Góra Świętej Anny",  "lat": 50.463864, "lon": 18.153211},
+    {"id": "leg", "name": "Legionowo",           "lat": 52.405250, "lon": 20.961110},
+    {"id": "pas", "name": "Pastewnik",           "lat": 50.892460, "lon": 16.039494},
+    {"id": "poz", "name": "Poznań",              "lat": 52.413253, "lon": 16.796986},
+    {"id": "ram", "name": "Ramża",               "lat": 50.151328, "lon": 18.725094},
+    {"id": "rze", "name": "Rzeszów",             "lat": 50.114060, "lon": 22.037000},
+    {"id": "swi", "name": "Świdwin",             "lat": 53.795786, "lon": 15.836828},
+    {"id": "uzr", "name": "Urżanki",             "lat": 53.855733, "lon": 21.412331}
+  ]
+}

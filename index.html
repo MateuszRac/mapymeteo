@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MapyMeteo – Radar IMGW</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="./css/style.css" />
+</head>
+<body>
+
+<div id="loading">
+  <div class="loading-inner">
+    <div class="spinner"></div>
+    <span>Ładowanie danych…</span>
+  </div>
+</div>
+
+<header id="toolbar">
+  <div class="tb-brand">
+    <span class="tb-brand-icon">⛈</span>
+    <span class="tb-brand-name">MapyMeteo</span>
+  </div>
+
+  <div class="tb-group">
+    <label class="tb-label" for="station-select">Stacja</label>
+    <select id="station-select" class="tb-select"></select>
+  </div>
+
+  <div class="tb-group">
+    <span class="tb-label">Produkt</span>
+    <div id="product-btns" class="btn-group"></div>
+  </div>
+
+  <div class="tb-group" id="unit-section" style="display:none">
+    <label class="tb-label" for="unit-select">Jedn.</label>
+    <select id="unit-select" class="tb-select"></select>
+  </div>
+
+  <div class="tb-group tb-group--right">
+    <label class="tb-label" for="opacity-slider">🔆</label>
+    <input id="opacity-slider" type="range" min="10" max="100" value="82"
+           class="opacity-slider" title="Krycie overlayu" />
+  </div>
+
+  <span id="status">—</span>
+</header>
+
+<div id="map"></div>
+
+<footer id="controls">
+  <button id="btn-prev" class="ctrl-btn" title="Poprzednia ramka (←)">◀</button>
+  <button id="btn-play" title="Play / Stop (Spacja)">▶ Play</button>
+  <button id="btn-next" class="ctrl-btn" title="Następna ramka (→)">▶</button>
+  <input id="time-slider" type="range" min="0" max="0" value="0" class="time-slider" />
+  <div class="time-info">
+    <span id="time-label">—</span>
+    <span id="frame-count"></span>
+  </div>
+</footer>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script type="module" src="./js/app.js"></script>
+</body>
+</html>

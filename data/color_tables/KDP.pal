@@ -1,0 +1,15 @@
+Product: CC
+Units: %
+Scale: 5
+Step: 0.01
+
+Color4:	-2	140	140	140	255
+Color4:	-0.5	77	0	0	255
+Color4:	1	225	150	180	255
+Color4:	2	0	40	236	255
+Color4:	3	0	50	236	255
+Color4:	4	0	50	11	255
+Color4:	5	0	236	236	255
+Color4:	6	0	236	236	255
+Color4:	7	0	236	236	255
+Color4:	8	0	236	236	255
