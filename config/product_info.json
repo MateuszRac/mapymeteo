@@ -1,0 +1,54 @@
+{
+  "0_5.ppi__DBZH": {
+    "name": "Odbiciowość PPI 0,5°",
+    "description": "Odbiciowość radarowa dla kąta elewacji 0,5°. Mierzy intensywność sygnału odbitego od cząstek opadów atmosferycznych. Wyższe wartości (ciepłe kolory) oznaczają intensywniejsze opady lub większe cząstki."
+  },
+  "0_5.ppi__VRADH": {
+    "name": "Prędkość radialna PPI 0,5°",
+    "description": "Prędkość Dopplera dla kąta elewacji 0,5°. Pokazuje prędkość ruchu cząstek opadów wzdłuż wiązki radaru — wartości dodatnie to ruch od radaru, ujemne — ku radarowi. Umożliwia analizę pola wiatru."
+  },
+  "0_5.ppi__KDP": {
+    "name": "Różnicowa stała fazowa KDP 0,5°",
+    "description": "Specific Differential Phase (KDP) dla kąta 0,5°. Pozwala na szacowanie natężenia opadu niezależnie od błędów kalibracji reflektywności i tłumienia sygnału."
+  },
+  "0_5.ppi__RHOHV": {
+    "name": "Korelacja RhoHV 0,5°",
+    "description": "Współczynnik korelacji między polaryzacją poziomą i pionową na kącie 0,5°. Niskie wartości wskazują na niejednorodne cząstki (grad, śnieg mokry, artefakty). Pomaga odróżnić opady meteorologiczne od innych ech."
+  },
+  "0_5.ppi__ZDR": {
+    "name": "Różnicowa odbiciowość ZDR 0,5°",
+    "description": "Differential Reflectivity (ZDR) na kącie 0,5°. Informuje o kształcie i orientacji cząstek. Duże wartości wskazują na spłaszczone duże krople deszczu, niskie — na kuliste cząstki (grad, śnieg suchy)."
+  },
+  "0_5.ppi__PHIDP": {
+    "name": "Różnicowa faza PHIDP 0,5°",
+    "description": "Differential Phase (PhiDP) na kącie 0,5°. Rośnie wzdłuż trasy wiązki w obszarach opadów. Używana do korekcji tłumienia i szacowania opadu metodami polaryzacyjnymi."
+  },
+  "125.cappi__DBZH": {
+    "name": "Odbiciowość CAPPI 1,5 km",
+    "description": "Stały poziom wysokości (CAPPI) na wysokości 1,5 km. Kompozyt pionowy z wielu skanów eliminujący artefakty terenowe. Zapewnia równomierny obraz opadów w całym zasięgu radaru."
+  },
+  "200.dpsri__RATE": {
+    "name": "Natężenie opadu DPSRI",
+    "description": "Chwilowe natężenie opadu [mm/h] szacowane metodą podwójnej polaryzacji (DPSRI). Dokładniejsze od klasycznych metod Z-R dzięki wykorzystaniu wielu parametrów polaryzacyjnych jednocześnie."
+  },
+  "250.max__DBZH": {
+    "name": "Maksimum kolumnowe MAX 250 km",
+    "description": "Maksymalna odbiciowość w całej kolumnie atmosfery w zasięgu 250 km. Pozwala szybko zlokalizować najintensywniejsze komórki opadowe i burzowe bez maskowania przez niskie chmury."
+  },
+  "compo_pcz.cappi__DBZH": {
+    "name": "Kompozyt PCZ CAPPI",
+    "description": "Lokalny kompozyt CAPPI na poziomie 1,5 km tworzony z połączenia danych kilku sąsiednich radarów sieci POLRAD. Redukuje strefy cienia i obszary martwe charakterystyczne dla pojedynczego radaru."
+  },
+  "CMAX_250__DBZH": {
+    "name": "Kompozyt Polska — maksimum kolumnowe CMAX",
+    "description": "Ogólnopolski kompozyt maksymalnej odbiciowości w całej kolumnie atmosfery. Pokrywa terytorium Polski, łącząc dane ze wszystkich radarów sieci POLRAD. Idealny do przeglądu sytuacji opadowej w skali kraju."
+  },
+  "CAPPI__DBZH": {
+    "name": "Kompozyt Polska — CAPPI 1,5 km",
+    "description": "Ogólnopolski kompozyt odbiciowości na stałej wysokości 1,5 km. Jednorodny obraz dla całej Polski bez zakłóceń terenowych, tworzony na podstawie połączonych skanów wszystkich radarów IMGW."
+  },
+  "DPSRI__RATE": {
+    "name": "Kompozyt Polska — natężenie opadu DPSRI",
+    "description": "Ogólnopolski kompozyt chwilowego natężenia opadu [mm/h] metodą podwójnej polaryzacji. Pokrywa całą Polskę, łącząc dokładne pomiary polaryzacyjne ze wszystkich stacji radarowych IMGW."
+  }
+}

@@ -37,11 +37,12 @@ load_dotenv(override=True)
 
 PROJECT_PATH = Path(os.getenv("PROJECT_PATH", Path(__file__).parent.parent))
 
-CONFIG_FILE  = PROJECT_PATH / "config" / "radar_config.json"
-DATA_DIR     = PROJECT_PATH / "data" / "polrad"
-OVERLAY_DIR  = PROJECT_PATH / "img" / "polrad" / "overlay"
-MANIFEST     = PROJECT_PATH / "img" / "polrad" / "manifest.json"
-LOG_DIR      = PROJECT_PATH / "logs"
+CONFIG_FILE   = PROJECT_PATH / "config" / "radar_config.json"
+PALETTES_FILE = PROJECT_PATH / "config" / "palettes.json"
+DATA_DIR      = PROJECT_PATH / "data" / "polrad"
+OVERLAY_DIR   = PROJECT_PATH / "img" / "polrad" / "overlay"
+MANIFEST      = PROJECT_PATH / "img" / "polrad" / "manifest.json"
+LOG_DIR       = PROJECT_PATH / "logs"
 
 FTP_IMG_DIR  = os.getenv("FTP_REMOTE_IMG_DIR", "img")
 
@@ -114,6 +115,7 @@ def manifest_add_frame(manifest, product_key, label, frame_meta, image_rel_path)
             "timestamp": frame_meta["timestamp"],
             "image":     image_rel_path,
             "bounds":    frame_meta["bounds"],
+            "quantity":  frame_meta["quantity"],
         })
         frames.sort(key=lambda fr: fr["timestamp"])
 
@@ -369,6 +371,10 @@ def main():
         with uploader.session() as sess:
             log.info("Uploading manifest.json na FTP")
             sess.upload(MANIFEST, _to_remote(MANIFEST))
+            if PALETTES_FILE.exists():
+                remote_palettes = str(Path(FTP_IMG_DIR).parent / "config" / "palettes.json")
+                log.info("Uploading palettes.json na FTP → %s", remote_palettes)
+                sess.upload(PALETTES_FILE, remote_palettes)
             if ftp_to_delete:
                 log.info("Kasowanie %d starych plików z FTP", len(ftp_to_delete))
                 for remote_path in ftp_to_delete:

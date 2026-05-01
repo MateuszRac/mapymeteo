@@ -9,3 +9,7 @@ geopandas
 python-dotenv
 paramiko
 Pillow
+ecmwf-opendata
+xarray
+cfgrib
+eccodes

@@ -5,10 +5,21 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>MapyMeteo – Radar IMGW</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="./css/style.css" />
+  <link rel="stylesheet" href="./css/style.css?v=15" />
 </head>
 <body>
 
+<!-- ── Cookie banner ── -->
+<div id="cookie-banner">
+  <div class="cookie-inner">
+    <p class="cookie-text">
+      <strong>Pliki cookie</strong> — Ta strona zapisuje w przeglądarce wyłącznie informację o akceptacji regulaminu. Nie stosujemy śledzenia ani reklam.
+    </p>
+    <button id="cookie-accept" class="cookie-btn">Rozumiem</button>
+  </div>
+</div>
+
+<!-- ── Loading ── -->
 <div id="loading">
   <div class="loading-inner">
     <div class="spinner"></div>
@@ -16,51 +27,105 @@
   </div>
 </div>
 
+<!-- ── Toolbar ── -->
 <header id="toolbar">
-  <div class="tb-brand">
-    <span class="tb-brand-icon">⛈</span>
-    <span class="tb-brand-name">MapyMeteo</span>
-  </div>
-
-  <div class="tb-group">
-    <label class="tb-label" for="station-select">Stacja</label>
+  <div id="tb-left">
     <select id="station-select" class="tb-select"></select>
-  </div>
 
-  <div class="tb-group">
-    <span class="tb-label">Produkt</span>
+    <!-- Mobile: tap to open product list -->
+    <button id="btn-product-toggle" title="Wybierz produkt">
+      <span id="cur-prod-label">—</span>
+      <span class="toggle-arrow">▾</span>
+    </button>
+
+    <!-- Desktop: inline product buttons / Mobile: fixed dropdown panel -->
     <div id="product-btns" class="btn-group"></div>
   </div>
 
-  <div class="tb-group tb-group--right">
-    <label class="tb-label" for="opacity-slider">🔆</label>
-    <input id="opacity-slider" type="range" min="10" max="100" value="82"
-           class="opacity-slider" title="Krycie overlayu" />
+  <div id="tb-clock">
+    <span id="time-clock">--:--</span>
+    <span id="time-date">--.--.----</span>
   </div>
-
-  <span id="status">—</span>
 </header>
 
+<!-- ── Color bar ── -->
+<div id="colorbar" class="hidden">
+  <div id="colorbar-bar"></div>
+  <div id="colorbar-footer">
+    <div id="colorbar-ticks"></div>
+    <span id="colorbar-label"></span>
+  </div>
+</div>
+
+<!-- ── Map ── -->
 <div id="map"></div>
 
+<!-- ── Side action icons ── -->
+<div id="side-actions">
+  <button class="side-btn" data-panel="support" title="Wsparcie projektu">☕</button>
+  <button class="side-btn" data-panel="info"    title="O wyświetlanym produkcie">ℹ</button>
+  <button class="side-btn" data-panel="settings" title="Ustawienia">⚙</button>
+  <button class="side-btn" data-panel="copy"    title="Prawa autorskie">©</button>
+</div>
+
+<!-- ── Side panel ── -->
+<div id="side-panel">
+  <div class="sp-header">
+    <h4 id="sp-title"></h4>
+    <button id="side-panel-close" title="Zamknij">✕</button>
+  </div>
+
+  <div id="sp-info" class="sp-page">
+    <p id="sp-info-name" class="sp-prod-name"></p>
+    <p id="sp-info-desc" class="sp-prod-desc"></p>
+  </div>
+
+  <div id="sp-settings" class="sp-page">
+    <div class="sp-row">
+      <span class="sp-label">Krycie warstwy radarowej</span>
+      <div class="sp-ctrl">
+        <input id="opacity-slider" type="range" min="10" max="100" value="82" class="sp-slider" />
+        <span class="sp-val" id="opacity-val">82%</span>
+      </div>
+    </div>
+    <div class="sp-row">
+      <span class="sp-label">Prędkość animacji</span>
+      <div class="sp-ctrl">
+        <span class="sp-icon">🐢</span>
+        <input id="speed-slider" type="range" min="1" max="5" step="1" value="3" class="sp-slider" />
+        <span class="sp-icon">🐇</span>
+      </div>
+    </div>
+  </div>
+
+  <div id="sp-copy" class="sp-page">
+    <p><strong>Dane radarowe:</strong><br>Źródłem pochodzenia danych jest Instytut Meteorologii i Gospodarki Wodnej – Państwowy Instytut Badawczy. Dane Instytutu Meteorologii i Gospodarki Wodnej – Państwowego Instytutu Badawczego zostały przetworzone</p>
+    <p><strong>Podkład mapowy:</strong><br>© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors</p>
+    <p><strong>Silnik mapy:</strong><br><a href="https://leafletjs.com" target="_blank" rel="noopener">Leaflet</a> v1.9.4</p>
+    <p class="sp-copy-year">© 2024–2026 MapyMeteo</p>
+  </div>
+
+  <div id="sp-support" class="sp-page">
+    <p>Jeśli MapyMeteo jest dla Ciebie przydatne i chcesz wesprzeć dalszy rozwój projektu, możesz postawić mi wirtualną kawkę ☕</p>
+    <div class="sp-donate-links">
+      <!-- Zmień TWOJA_NAZWA na swój login -->
+      <a href="https://buycoffee.to/TWOJA_NAZWA" target="_blank" rel="noopener" class="sp-donate-btn sp-donate-btn--coffee">
+        ☕ Buy me a coffee
+      </a>
+      <a href="https://patronite.pl/TWOJA_NAZWA" target="_blank" rel="noopener" class="sp-donate-btn sp-donate-btn--patronite">
+        ♥ Patronite
+      </a>
+    </div>
+  </div>
+</div>
+
+<!-- ── Footer player ── -->
 <footer id="controls">
-  <button id="btn-prev" class="ctrl-btn" title="Poprzednia ramka (←)">◀</button>
-  <button id="btn-play" title="Play / Stop (Spacja)">▶ Play</button>
-  <button id="btn-next" class="ctrl-btn" title="Następna ramka (→)">▶</button>
+  <button id="btn-play" title="Play / Stop (Spacja)">▶</button>
   <input id="time-slider" type="range" min="0" max="0" value="0" class="time-slider" />
-  <div class="time-info">
-    <span id="time-label">—</span>
-    <span id="frame-count"></span>
-  </div>
-  <div class="speed-group" title="Prędkość animacji">
-    <span class="ctrl-label">🐢</span>
-    <input id="speed-slider" type="range" min="1" max="5" step="1" value="3"
-           class="speed-slider" />
-    <span class="ctrl-label">🐇</span>
-  </div>
 </footer>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script type="module" src="./js/app.js"></script>
+<script type="module" src="./js/app.js?v=15"></script>
 </body>
 </html>
