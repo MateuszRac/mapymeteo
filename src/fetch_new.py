@@ -356,6 +356,7 @@ def main():
     ftp_to_delete = []
 
     def _run_pass(pass_label, max_new=None):
+        nonlocal total, ftp_to_delete
         log.info("── %s ──", pass_label)
         futures = {}
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -368,7 +369,6 @@ def main():
                 pi = futures[f]
                 try:
                     n, deletes = f.result()
-                    nonlocal total
                     total         += n
                     ftp_to_delete += deletes
                 except Exception as e:
