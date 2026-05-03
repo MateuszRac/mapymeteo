@@ -67,14 +67,14 @@ def all_imgw_paths(cfg):
             paths.append({
                 "path":       f"{IMGW_PATH_BASE}/HVD_{radar}_{product}",
                 "key_prefix": f"{radar.upper()}_{product}",
-                "label_base": f"{_station_name(cfg, radar)} – {cfg['product_labels'].get(product, product)}",
+                "label_base": f"{_station_name(cfg, radar)} – {product}",
             })
     for compo in cfg["compo_products"]:
         short = compo.split(".")[0]
         paths.append({
             "path":       f"{IMGW_PATH_BASE}/HVD_COMPO_{compo}",
             "key_prefix": f"COMPO_{short}",
-            "label_base": cfg["product_labels"].get(compo, compo),
+            "label_base": compo,
         })
     return paths
 
