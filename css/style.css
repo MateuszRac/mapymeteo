@@ -457,23 +457,16 @@ body {
 #colorbar.hidden { display: none; }
 
 #colorbar-bar {
-  height: 11px;
+  position: relative;
+  height: 14px;
   border-radius: 2px;
   background: #333;
   flex-shrink: 0;
 }
 
-#colorbar-footer {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-}
-
 #colorbar-ticks {
   position: relative;
-  flex: 1;
   height: 14px;
-  flex-shrink: 1;
 }
 
 .cb-tick {
@@ -487,11 +480,15 @@ body {
 }
 
 #colorbar-label {
-  font-size: .58rem;
-  color: #5a7090;
+  position: absolute;
+  right: 5px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: .55rem;
+  color: rgba(255,255,255,0.55);
   white-space: nowrap;
-  flex-shrink: 0;
-  line-height: 14px;
+  pointer-events: none;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.8);
 }
 
 /* ── Leaflet adjustments ── */

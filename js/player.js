@@ -1,4 +1,4 @@
-import { PLAY_MS, MAX_FRAMES } from './config.js?v=15';
+import { PLAY_MS, MAX_FRAMES } from './config.js?v=20';
 
 export function createPlayer({ onFrame, onClear }) {
   let frames   = [];
@@ -63,18 +63,28 @@ export function createPlayer({ onFrame, onClear }) {
   }
 
   function updateFrames(newFrames) {
-    const updated = (newFrames ?? []).slice(-MAX_FRAMES);
+    const updated      = (newFrames ?? []).slice(-MAX_FRAMES);
     if (!updated.length) return 0;
-    const added    = updated.length - frames.length;
-    const curStamp = frames[frameIdx]?.timestamp;
+    const curStamp     = frames[frameIdx]?.timestamp;
+    const oldLastStamp = frames[frames.length - 1]?.timestamp;
+    const wasAtLast    = frameIdx === frames.length - 1;
     frames = updated;
     if (slider) slider.max = Math.max(0, frames.length - 1);
-    const restored = curStamp ? frames.findIndex(f => f.timestamp === curStamp) : -1;
-    frameIdx = restored >= 0 ? restored : frames.length - 1;
-    if (slider) slider.value = frameIdx;
-    setSliderFill(frameIdx, frames.length);
-    if (!playing) render();
-    return added;
+    const newLastStamp = frames[frames.length - 1]?.timestamp;
+    const hasNewFrame  = newLastStamp !== oldLastStamp;
+    if (wasAtLast && hasNewFrame) {
+      frameIdx = frames.length - 1;
+      if (slider) slider.value = frameIdx;
+      setSliderFill(frameIdx, frames.length);
+      render();
+    } else {
+      const restored = curStamp ? frames.findIndex(f => f.timestamp === curStamp) : -1;
+      frameIdx = restored >= 0 ? restored : frames.length - 1;
+      if (slider) slider.value = frameIdx;
+      setSliderFill(frameIdx, frames.length);
+      if (!playing) render();
+    }
+    return hasNewFrame ? 1 : 0;
   }
 
   btnPlay?.addEventListener('click', () => playing ? stop() : play());

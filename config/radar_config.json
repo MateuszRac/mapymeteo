@@ -25,18 +25,6 @@
     "PhiDP": "PhiDP [°]"
   },
 
-  "product_labels": {
-    "0_5.ppi":   "PPI 0.5°",
-    "125.cappi": "CAPPI 125km",
-    "200.dpsri": "DPSRI 200km",
-    "200.etz":   "ETZ 200km",
-    "250.max":   "MAX 250km",
-    "CAPPI.comp.cappi":  "Polska - odbiciowość CAPPI 1.5km",
-    "CMAX_250.comp.cmax": "Polska - odbiciowość maksymalna CMAX",
-    "DPSRI.comp.sri":    "Polska - natężenie opadu DPSRI",
-    "ETOP": "Wysokość wierzchołków echa"
-  },
-
   "radar_stations": [
     {"id": "brz", "name": "Brzuchania",         "lat": 50.394169, "lon": 20.083228},
     {"id": "gdy", "name": "Gdynia",              "lat": 54.500814, "lon": 18.271897},

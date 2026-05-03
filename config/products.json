@@ -1,0 +1,57 @@
+{
+  "0_5.ppi__DBZH": {
+    "short": "PPI 0,5° (dBZ)",
+    "long": "Odbiciowość radarowa (dBZ) dla kąta elewacji 0,5°",
+    "description": "Określa intensywność opadu najbliżej ziemi. Pozwala na najszybsze wykrywanie komórek burzowych oraz ocenę zasięgu deszczu, śniegu lub gradu w dolnej troposferze."
+  },
+  "125.cappi__VRADH": {
+    "short": "VCAPPI (m/s)",
+    "long": "Wiatr radialny (m/s) dla wysokości 1,5 km",
+    "description": "Mierzy prędkość przemieszczania się cząstek względem radaru. Kluczowy przy wykrywaniu rotacji w chmurach (mezocyklonów), uskoków wiatru oraz frontów szkwałowych."
+  },
+  "200.dpsri__RATE": {
+    "short": "DPSRI (mm/h)",
+    "long": "Natężenie opadu (mm/h) — podwójna polaryzacja",
+    "description": "Precyzyjna ocena ilości wody docierającej do gruntu. Dzięki danym o kształcie kropel eliminuje błędy pomiarowe typowe dla standardowych metod, szczególnie podczas ulew."
+  },
+  "250.max__KDP": {
+    "short": "KDP (°/km)",
+    "long": "Przesunięcie fazowe (°/km) — Specific Differential Phase Shift",
+    "description": "Wskazuje na duże zagęszczenie wody w jednostce objętości. Niezastąpiony przy precyzyjnej identyfikacji rdzeni ulewnego deszczu oraz obszarów z bardzo dużym gradem."
+  },
+  "250.max__RHOHV": {
+    "short": "CC (%)",
+    "long": "Współczynnik korelacji wiązki (%)",
+    "description": "Określa jednorodność obiektów. Pozwala odróżnić deszcz od obiektów niebiologicznych, takich jak ptaki, owady, dym czy gruz niesiony przez lej tornada (TDS)."
+  },
+  "250.max__ZDR": {
+    "short": "ZDR (dBZ)",
+    "long": "Odbiciowość różnicowa (dBZ)",
+    "description": "Informuje o kształcie cząstek (spłaszczone vs kuliste). Pozwala rozróżnić duże krople deszczu od kulistego gradu lub drobnego, niesymetrycznego płatka śniegu."
+  },
+  "250.max__PHIDP": {
+    "short": "PhiDP (°/km)",
+    "long": "Przesunięcie fazowe (°)",
+    "description": "Sumaryczna zmiana fazy fali przechodzącej przez opad. Służy do wyliczania parametru KDP oraz korygowania tłumienia wiązki w warunkach ekstremalnie silnego opadu."
+  },
+  "compo_pcz.cappi__DBZH": {
+    "short": "CAPPI (dBZ)",
+    "long": "Odbiciowość radarowa (dBZ) CAPPI dla 1,5 km",
+    "description": "Przekrój poziomy atmosfery na stałej wysokości. Ułatwia porównywanie intensywności opadów w różnych odległościach od radaru, niwelując wpływ krzywizny Ziemi."
+  },
+  "CAPPI__DBZH": {
+    "short": "CAPPI (dBZ)",
+    "long": "Odbiciowość radarowa (dBZ) CAPPI dla 1,5 km",
+    "description": "Przekrój poziomy atmosfery na stałej wysokości. Ułatwia porównywanie intensywności opadów w różnych odległościach od radaru, niwelując wpływ krzywizny Ziemi."
+  },
+  "CMAX_250__DBZH": {
+    "short": "CMAX (dBZ)",
+    "long": "Odbiciowość maksymalna (dBZ) w pionie",
+    "description": "Wybiera najwyższą wartość odbiciowości z całego profilu pionowego. Najlepsze narzędzie do szybkiej oceny ogólnej siły burzy i potencjału niszczycielskiego gradu."
+  },
+  "DPSRI__RATE": {
+    "short": "DPSRI (mm/h)",
+    "long": "Natężenie opadu (mm/h) — podwójna polaryzacja",
+    "description": "Precyzyjna ocena ilości wody docierającej do gruntu. Dzięki danym o kształcie kropel eliminuje błędy pomiarowe typowe dla standardowych metod, szczególnie podczas ulew."
+  }
+}

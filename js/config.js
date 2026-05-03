@@ -1,6 +1,6 @@
 export const MANIFEST_URL     = './img/polrad/manifest.json';
 export const CONFIG_URL       = './config/radar_config.json';
-export const PRODUCT_INFO_URL = './config/product_info.json';
+export const PRODUCTS_URL     = './config/products.json';
 export const PALETTES_URL     = './config/palettes.json';
 export const PLAY_MS      = 800;
 export const MAX_FRAMES   = 24;

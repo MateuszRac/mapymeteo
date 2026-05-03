@@ -4,8 +4,15 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>MapyMeteo – Radar IMGW</title>
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-5Q9M5KP7M1"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-5Q9M5KP7M1');
+  </script>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="./css/style.css?v=15" />
+  <link rel="stylesheet" href="./css/style.css?v=20" />
 </head>
 <body>
 
@@ -50,11 +57,8 @@
 
 <!-- ── Color bar ── -->
 <div id="colorbar" class="hidden">
-  <div id="colorbar-bar"></div>
-  <div id="colorbar-footer">
-    <div id="colorbar-ticks"></div>
-    <span id="colorbar-label"></span>
-  </div>
+  <div id="colorbar-bar"><span id="colorbar-label"></span></div>
+  <div id="colorbar-ticks"></div>
 </div>
 
 <!-- ── Map ── -->
@@ -126,6 +130,6 @@
 </footer>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script type="module" src="./js/app.js?v=15"></script>
+<script type="module" src="./js/app.js?v=20"></script>
 </body>
 </html>

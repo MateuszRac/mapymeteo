@@ -1,13 +1,13 @@
-import { MANIFEST_URL, CONFIG_URL, PRODUCT_INFO_URL, PALETTES_URL } from './config.js?v=15';
+import { MANIFEST_URL, CONFIG_URL, PRODUCTS_URL, PALETTES_URL } from './config.js?v=20';
 
 export async function loadAll() {
-  const [config, manifest, productInfo, palettes] = await Promise.all([
+  const [config, manifest, products, palettes] = await Promise.all([
     fetch(CONFIG_URL   + '?t=' + Date.now()).then(r => { if (!r.ok) throw new Error(r.statusText); return r.json(); }),
     fetch(MANIFEST_URL + '?t=' + Date.now()).then(r => { if (!r.ok) throw new Error(r.statusText); return r.json(); }),
-    fetch(PRODUCT_INFO_URL + '?t=' + Date.now()).then(r => r.ok ? r.json() : {}),
-    fetch(PALETTES_URL     + '?t=' + Date.now()).then(r => r.ok ? r.json() : {}),
+    fetch(PRODUCTS_URL + '?t=' + Date.now()).then(r => r.ok ? r.json() : {}),
+    fetch(PALETTES_URL + '?t=' + Date.now()).then(r => r.ok ? r.json() : {}),
   ]);
-  return { config, manifest, productInfo, palettes };
+  return { config, manifest, products, palettes };
 }
 
 export async function refreshManifest() {
@@ -15,10 +15,6 @@ export async function refreshManifest() {
   return r.json();
 }
 
-/**
- * Rozbija klucz manifestu na składowe.
- * Formaty: "BRZ_0_5.ppi__DBZH"  lub  "COMPO_CMAX_250__DBZH"
- */
 export function parseKey(key) {
   const dbl    = key.indexOf('__');
   const prefix = dbl >= 0 ? key.slice(0, dbl) : key;
@@ -62,11 +58,4 @@ export function getStationLabel(stationId, config) {
   if (stationId === 'COMPO') return 'Polska';
   const s = (config.radar_stations || []).find(r => r.id === stationId);
   return s ? s.name : stationId.toUpperCase();
-}
-
-export function getProductLabel(productType, config) {
-  if (config.product_labels?.[productType]) return config.product_labels[productType];
-  const full = (config.compo_products || []).find(c => c.split('.')[0] === productType);
-  if (full) return config.product_labels?.[full] || full;
-  return productType;
 }

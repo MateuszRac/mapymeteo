@@ -1,10 +1,10 @@
-import { REFRESH_MS, MAP_CENTER, MAP_ZOOM } from './config.js?v=15';
+import { REFRESH_MS, MAP_CENTER, MAP_ZOOM } from './config.js?v=20';
 import {
   loadAll, refreshManifest, buildIndex, parseKey,
-  getStationLabel, getProductLabel,
-} from './data.js?v=15';
-import { initMap, showFrame, clearOverlay, setOverlayOpacity, addRadarMarkers, setActiveMarker } from './map.js?v=15';
-import { createPlayer } from './player.js?v=15';
+  getStationLabel,
+} from './data.js?v=20';
+import { initMap, showFrame, clearOverlay, setOverlayOpacity, addRadarMarkers, setActiveMarker, clearCoverageMask } from './map.js?v=20';
+import { createPlayer } from './player.js?v=20';
 
 const SPEED_STEPS = [2000, 1200, 800, 500, 250];
 
@@ -38,13 +38,13 @@ const SP_PAGES = {
 const SP_TITLES = { info: 'O produkcie', settings: 'Ustawienia', copy: 'Prawa autorskie', support: 'Wsparcie' };
 
 // ── Stan ──────────────────────────────────────────────────────────────────────
-let manifest    = null;
-let config      = null;
-let index       = null;
-let map         = null;
-let player      = null;
-let productInfo = {};
-let palettes    = {};
+let manifest = null;
+let config   = null;
+let index    = null;
+let map      = null;
+let player   = null;
+let products = {};
+let palettes = {};
 
 let selStation = null;
 let selKey     = null;
@@ -53,17 +53,19 @@ let selKey     = null;
 async function init() {
   initCookies();
   try {
-    ({ config, manifest, productInfo, palettes } = await loadAll());
+    ({ config, manifest, products, palettes } = await loadAll());
     index  = buildIndex(manifest, config);
     map    = initMap();
     player = createPlayer({
       onFrame: frame => {
-        showFrame(map, frame, parseInt(opacitySl.value, 10) / 100);
+        const isCompo = selKey ? parseKey(selKey).isCompo : false;
+        showFrame(map, frame, parseInt(opacitySl.value, 10) / 100, !isCompo);
         updateTimeDisplay(frame.timestamp);
         updateColorbar(frame.quantity ?? (selKey ? parseKey(selKey).unit : null));
       },
       onClear: () => {
         clearOverlay();
+        clearCoverageMask();
         updateTimeDisplay(null);
       },
     });
@@ -128,11 +130,10 @@ function makeOption(value, label) {
 }
 
 // ── Etykieta produktu ─────────────────────────────────────────────────────────
-function itemLabel(item) {
-  let prod = getProductLabel(item.productType, config);
-  if (item.isCompo && prod.startsWith('Polska - ')) prod = prod.slice('Polska - '.length);
-  prod = prod.charAt(0).toUpperCase() + prod.slice(1);
-  return item.unit ? `${prod} · ${item.unit}` : prod;
+function itemLabel(item, short = false) {
+  const p = products[item.productType + '__' + item.unit];
+  if (p) return short ? p.short : p.long;
+  return item.productType + (item.unit ? ' · ' + item.unit : '');
 }
 
 // ── Przyciski produktów ───────────────────────────────────────────────────────
@@ -216,7 +217,7 @@ function updateCurProdLabel(key) {
   const parsed = parseKey(key);
   const items  = index.byStation[parsed.stationId]?.items ?? [];
   const item   = items.find(i => i.key === key);
-  curProdLabel.textContent = item ? itemLabel(item) : parsed.productType;
+  curProdLabel.textContent = item ? itemLabel(item, true) : parsed.productType;
 }
 
 // ── Pozycjonowanie paska kolorów pod toolbarem ────────────────────────────────
@@ -304,13 +305,11 @@ function updateInfoPanel() {
     return;
   }
   const parsed = parseKey(selKey);
-  const lookupKey = parsed.productType + '__' + parsed.unit;
-  const info = productInfo[lookupKey];
-
-  const items = index.byStation[parsed.stationId]?.items ?? [];
-  const item  = items.find(i => i.key === selKey);
-  if (spInfoName) spInfoName.textContent = info?.name ?? (item ? itemLabel(item) : lookupKey);
-  if (spInfoDesc) spInfoDesc.textContent = info?.description ?? 'Brak szczegółowego opisu dla tego produktu.';
+  const p      = products[parsed.productType + '__' + parsed.unit];
+  const items  = index.byStation[parsed.stationId]?.items ?? [];
+  const item   = items.find(i => i.key === selKey);
+  if (spInfoName) spInfoName.textContent = p?.long ?? (item ? itemLabel(item) : parsed.productType);
+  if (spInfoDesc) spInfoDesc.textContent = p?.description ?? 'Brak szczegółowego opisu dla tego produktu.';
 }
 
 document.querySelectorAll('.side-btn').forEach(btn => {
