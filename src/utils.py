@@ -105,9 +105,17 @@ def _timestamp_from_filename(filename):
     return None
 
 
+_UNIT_NORM = {
+    "dBZ": "DBZH", "V": "VRADH", "dBR": "RATE",
+    "RhoHV": "RHOHV", "PhiDP": "PHIDP",
+}
+
 def _unit_from_filename(filename):
     match = re.match(r"\d{16}([A-Za-z]+)\.", filename)
-    return match.group(1) if match else None
+    if not match:
+        return None
+    raw = match.group(1)
+    return _UNIT_NORM.get(raw, raw)
 
 
 def _level_from_filename(filename):
