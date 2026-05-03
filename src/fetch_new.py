@@ -146,7 +146,7 @@ def _to_remote(local_path: Path) -> str:
 #  Przetwarzanie jednej ścieżki IMGW
 # ─────────────────────────────────────────────────────────
 
-def process_path(path_info, cfg, manifest, manifest_lock, ftp_uploader=None):
+def process_path(path_info, cfg, manifest, manifest_lock, ftp_uploader=None, max_new=None):
     """
     Dla jednej ścieżki IMGW:
       - usuwa lokalne pliki poza oknem historii,
@@ -231,11 +231,15 @@ def process_path(path_info, cfg, manifest, manifest_lock, ftp_uploader=None):
             ]
             df_new = df_window[~df_window["timestamp"].apply(
                 lambda t: t.strftime("%Y%m%d%H%M%S")
-            ).isin(existing_stems)]
+            ).isin(existing_stems)].sort_values("timestamp", ascending=False)
 
-            log.info("[%s] Okno %d min: %d dostępnych, %d już istnieje, %d do wygenerowania",
+            if max_new is not None:
+                df_new = df_new.head(max_new)
+
+            log.info("[%s] Okno %d min: %d dostępnych, %d już istnieje, %d do wygenerowania%s",
                      product_key, history_minutes,
-                     len(df_window), len(existing_stems), len(df_new))
+                     len(df_window), len(existing_stems), len(df_new),
+                     f" (limit {max_new})" if max_new else "")
 
             if df_new.empty:
                 continue
@@ -339,29 +343,47 @@ def main():
         log.warning("FTP niekonfigurowany (brak FTP_HOST/FTP_USER w .env) — transfer pominięty")
         uploader = None
 
-    # ── Przetwarzanie równoległe ─────────────────────────────────────────────
+    # ── Przetwarzanie dwufazowe ──────────────────────────────────────────────
+    # Faza 1: tylko najnowsza klatka każdego produktu → szybki update strony
+    # Faza 2: pozostałe (backfill) → wypełnienie historii
     manifest      = load_manifest()
     manifest_lock = threading.Lock()
 
     max_workers = min(cfg.get("workers", os.cpu_count() or 4), len(selected))
     log.info("Wątki: %d", max_workers)
 
-    total          = 0
-    ftp_to_delete  = []
-    futures = {}
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        for path_info in selected:
-            f = executor.submit(process_path, path_info, cfg, manifest, manifest_lock, uploader)
-            futures[f] = path_info
+    total         = 0
+    ftp_to_delete = []
 
-        for f in as_completed(futures):
-            pi = futures[f]
-            try:
-                n, deletes = f.result()
-                total        += n
-                ftp_to_delete += deletes
-            except Exception as e:
-                log.error("Błąd [%s]: %s", pi["key_prefix"], e, exc_info=True)
+    def _run_pass(pass_label, max_new=None):
+        log.info("── %s ──", pass_label)
+        futures = {}
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            for pi in selected:
+                f = executor.submit(
+                    process_path, pi, cfg, manifest, manifest_lock, uploader, max_new
+                )
+                futures[f] = pi
+            for f in as_completed(futures):
+                pi = futures[f]
+                try:
+                    n, deletes = f.result()
+                    nonlocal total
+                    total         += n
+                    ftp_to_delete += deletes
+                except Exception as e:
+                    log.error("Błąd [%s]: %s", pi["key_prefix"], e, exc_info=True)
+
+    _run_pass("Faza 1 — najnowsza klatka", max_new=1)
+
+    # Wyślij manifest po fazie 1 — strona natychmiast pokazuje świeże dane
+    save_manifest(manifest)
+    if uploader:
+        with uploader.session() as sess:
+            log.info("Uploading manifest.json (faza 1)")
+            sess.upload(MANIFEST, _to_remote(MANIFEST))
+
+    _run_pass("Faza 2 — backfill historii")
 
     # ── Prawidłowa kolejność FTP: nowe pliki są już na serwerze ─────────────
     # 1. Zapisz i wyślij manifest — od tej chwili klienci widzą nowy stan
@@ -369,7 +391,7 @@ def main():
     save_manifest(manifest)
     if uploader:
         with uploader.session() as sess:
-            log.info("Uploading manifest.json na FTP")
+            log.info("Uploading manifest.json (faza 2)")
             sess.upload(MANIFEST, _to_remote(MANIFEST))
             if PALETTES_FILE.exists():
                 remote_palettes = str(Path(FTP_IMG_DIR).parent / "config" / "palettes.json")
