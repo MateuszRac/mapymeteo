@@ -13,3 +13,7 @@ ecmwf-opendata
 xarray
 cfgrib
 eccodes
+bs4
+cartopy
+scipy
+cfgrib

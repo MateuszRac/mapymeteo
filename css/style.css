@@ -494,6 +494,7 @@ body {
 /* ── Leaflet adjustments ── */
 .leaflet-bottom.leaflet-right { bottom: 60px; }
 .leaflet-control-zoom { margin-top: 92px !important; }
+.leaflet-image-layer { image-rendering: pixelated; }
 
 /* ── Responsive ── */
 @media (max-width: 700px) {
