@@ -10,16 +10,12 @@ from ..utils import thetae as calc_thetae
 
 
 class ThetaEProduct(GfsProduct):
-    """850 hPa equivalent potential temperature with MSLP contours.
+    """850 hPa equivalent potential temperature with MSLP contours."""
 
-    Layers:
-    - θe 850 hPa shading (nipy_spectral)
-    - MSLP isobars every 5 hPa
-    - H/L markers at pressure extrema
-    - Hatching where PRATE > 0.5 mm/hr
-    """
+    NAME = "thetae"
+    TITLE = "θe 850 hPa · MSLP"
 
-    def plot(self, file_path: str | Path) -> None:
+    def _render(self, file_path: str | Path) -> None:
         reader = GribReader(file_path)
 
         mslp = reader.get_parameter("prmsl", "meanSea", 0) / 100

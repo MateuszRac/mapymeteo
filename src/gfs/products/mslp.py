@@ -7,14 +7,12 @@ from ..reader import GribReader
 
 
 class MslpProduct(GfsProduct):
-    """MSLP isobars with surface CAPE shading.
+    """MSLP isobars with surface CAPE shading."""
 
-    Layers:
-    - Surface CAPE shading (YlOrRd)
-    - MSLP isobars every 5 hPa with labels
-    """
+    NAME = "mslp"
+    TITLE = "MSLP · Surface CAPE"
 
-    def plot(self, file_path: str | Path) -> None:
+    def _render(self, file_path: str | Path) -> None:
         reader = GribReader(file_path)
         mslp = reader.get_parameter("prmsl", "meanSea", 0) / 100
         cape = reader.get_parameter("cape", "surface", 0)

@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MapyMeteo – Mapy GFS</title>
+  <link rel="icon" type="image/x-icon" href="../favicon.ico" />
+  <link rel="stylesheet" href="../css/style.css?v=20" />
+  <style>
+    /* ── GFS viewer overrides ── */
+    body { overflow: hidden; }
+
+    #gfs-toolbar {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      padding: 0 14px 0 10px;
+      gap: 10px;
+      background: var(--bar-bg);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid rgba(31,45,69,.55);
+      min-height: 54px;
+    }
+
+    .gfs-logo {
+      font-size: .9rem;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: .04em;
+      white-space: nowrap;
+      text-decoration: none;
+      flex-shrink: 0;
+    }
+    .gfs-logo span { color: var(--muted); font-weight: 400; font-size: .75rem; }
+
+    .tb-sep {
+      width: 1px;
+      height: 24px;
+      background: var(--border);
+      flex-shrink: 0;
+    }
+
+    #tb-right {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    #run-label {
+      font-size: .72rem;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    /* ── Main image area ── */
+    #gfs-stage {
+      position: fixed;
+      top: 54px;
+      bottom: 62px;
+      left: 0; right: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #000c1a;
+      overflow: hidden;
+    }
+
+    #gfs-img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      display: block;
+      transition: opacity .15s;
+    }
+    #gfs-img.loading { opacity: 0.35; }
+
+    #no-data {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      color: var(--muted);
+      text-align: center;
+      padding: 24px;
+    }
+    #no-data.visible { display: flex; }
+    #no-data h2 { font-size: 1.1rem; color: var(--text); }
+    #no-data p  { font-size: .82rem; line-height: 1.65; max-width: 440px; }
+    #no-data code {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 2px 7px;
+      font-size: .8rem;
+      color: var(--accent);
+    }
+
+    /* ── Footer step player ── */
+    #gfs-footer {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 14px 12px;
+      background: var(--bar-bg);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-top: 1px solid rgba(31,45,69,.55);
+      min-height: 62px;
+    }
+
+    #btn-prev, #btn-next {
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      background: rgba(22,31,53,.85);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-size: .85rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: background .12s, border-color .12s;
+    }
+    #btn-prev:hover, #btn-next:hover {
+      background: #243050; border-color: var(--accent);
+    }
+    #btn-prev:disabled, #btn-next:disabled {
+      opacity: .35; cursor: default;
+    }
+
+    #gfs-btn-play {
+      width: 44px; height: 44px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: none;
+      color: #fff;
+      font-size: 1rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      padding: 0;
+      transition: background .15s, transform .1s;
+    }
+    #gfs-btn-play:hover { background: var(--accent-h); transform: scale(1.06); }
+    #gfs-btn-play.playing { background: #dc2626; }
+
+    #step-slider {
+      flex: 1;
+      height: 5px;
+      border-radius: 3px;
+      cursor: pointer;
+      -webkit-appearance: none;
+      appearance: none;
+      background: var(--border);
+      outline: none;
+    }
+    #step-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 18px; height: 18px;
+      border-radius: 50%;
+      background: #fff;
+      border: 2px solid var(--accent);
+      margin-top: -6.5px;
+      cursor: pointer;
+    }
+    #step-slider::-moz-range-thumb {
+      width: 16px; height: 16px;
+      border-radius: 50%;
+      background: #fff;
+      border: 2px solid var(--accent);
+      cursor: pointer;
+    }
+
+    .step-info {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      flex-shrink: 0;
+      line-height: 1.2;
+      min-width: 110px;
+    }
+    #step-valid {
+      font-size: .9rem;
+      font-weight: 600;
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+    }
+    #step-fh {
+      font-size: .68rem;
+      color: var(--accent);
+      margin-top: 2px;
+    }
+
+    /* ── Loading overlay ── */
+    #gfs-loading {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      color: var(--accent);
+      font-size: .95rem;
+      pointer-events: none;
+    }
+    #gfs-loading.hidden { display: none; }
+
+    /* ── Responsive ── */
+    @media (max-width: 700px) {
+      #gfs-toolbar { padding: 0 10px 0 8px; gap: 6px; min-height: 52px; }
+      .gfs-logo span { display: none; }
+      #gfs-stage { top: 52px; }
+      #step-info-label { display: none; }
+      .step-info { min-width: 80px; }
+      #step-valid { font-size: .8rem; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Toolbar ── -->
+<header id="gfs-toolbar">
+  <a class="gfs-logo" href="../index.html">
+    MapyMeteo <span>/ GFS</span>
+  </a>
+
+  <div class="tb-sep"></div>
+
+  <select id="product-select" class="tb-select" title="Produkt"></select>
+
+  <div class="tb-sep"></div>
+
+  <select id="run-select" class="tb-select" style="max-width:180px" title="Start prognozy"></select>
+
+  <div id="tb-right">
+    <span id="run-label"></span>
+  </div>
+</header>
+
+<!-- ── Main image stage ── -->
+<div id="gfs-stage">
+  <div id="gfs-loading">
+    <div class="spinner"></div>
+    <span>Ładowanie…</span>
+  </div>
+  <div id="no-data">
+    <h2>Brak danych GFS</h2>
+    <p>
+      Nie znaleziono pliku <code>img/gfs/manifest.json</code>.<br>
+      Wygeneruj mapy w notebooku, a następnie uruchom serwer lokalny
+      z głównego katalogu projektu:
+    </p>
+    <p><code>python -m http.server 8000</code></p>
+    <p>i otwórz <code>http://localhost:8000/models/</code></p>
+  </div>
+  <img id="gfs-img" src="" alt="Mapa GFS" />
+</div>
+
+<!-- ── Footer player ── -->
+<footer id="gfs-footer">
+  <button id="gfs-btn-play" title="Play / Stop">▶</button>
+  <button id="btn-prev" title="Poprzedni krok">◀</button>
+  <input id="step-slider" type="range" min="0" max="0" value="0" />
+  <button id="btn-next" title="Następny krok">▶</button>
+  <div class="step-info">
+    <span id="step-valid">--.--.---- --:--</span>
+    <span id="step-fh">+--- h</span>
+  </div>
+</footer>
+
+<script>
+// ── Constants ──────────────────────────────────────────────────────────────
+const MANIFEST_URL = '../img/gfs/manifest.json';
+const IMG_BASE     = '../img/gfs/';
+const PLAY_INTERVAL_MS = 600;
+
+// ── State ──────────────────────────────────────────────────────────────────
+let manifest   = null;
+let curProduct = null;
+let curRun     = null;
+let frames     = [];
+let curStep    = 0;
+let playTimer  = null;
+
+// ── DOM refs ───────────────────────────────────────────────────────────────
+const productSel  = document.getElementById('product-select');
+const runSel      = document.getElementById('run-select');
+const runLabel    = document.getElementById('run-label');
+const gfsImg      = document.getElementById('gfs-img');
+const stepSlider  = document.getElementById('step-slider');
+const stepValid   = document.getElementById('step-valid');
+const stepFh      = document.getElementById('step-fh');
+const btnPlay     = document.getElementById('gfs-btn-play');
+const btnPrev     = document.getElementById('btn-prev');
+const btnNext     = document.getElementById('btn-next');
+const loadingEl   = document.getElementById('gfs-loading');
+const noDataEl    = document.getElementById('no-data');
+
+// ── Time helpers ───────────────────────────────────────────────────────────
+function parseTime(s) {
+  // "YYYYMMDDHHMM" → Date (UTC)
+  const y = +s.slice(0,4), mo = +s.slice(4,6)-1, d = +s.slice(6,8);
+  const h = +s.slice(8,10), mi = +s.slice(10,12);
+  return new Date(Date.UTC(y,mo,d,h,mi));
+}
+
+function fmtDateTime(dt) {
+  const p = n => String(n).padStart(2,'0');
+  return `${dt.getUTCDate()}.${p(dt.getUTCMonth()+1)}.${dt.getUTCFullYear()} `
+       + `${p(dt.getUTCHours())}:${p(dt.getUTCMinutes())} UTC`;
+}
+
+function fmtRun(s) {
+  // "YYYYMMDDHHMM" → "YYYY-MM-DD HH UTC"
+  return `${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)} ${s.slice(8,10)} UTC`;
+}
+
+// ── Populate selectors ─────────────────────────────────────────────────────
+function buildProductOptions() {
+  productSel.innerHTML = '';
+  Object.entries(manifest.products).forEach(([key, info]) => {
+    const opt = document.createElement('option');
+    opt.value = key;
+    opt.textContent = info.name;
+    productSel.appendChild(opt);
+  });
+}
+
+function buildRunOptions(product) {
+  runSel.innerHTML = '';
+  const runs = Object.keys(manifest.products[product].runs).sort().reverse();
+  runs.forEach(run => {
+    const opt = document.createElement('option');
+    opt.value = run;
+    opt.textContent = fmtRun(run);
+    runSel.appendChild(opt);
+  });
+  return runs[0] || null;
+}
+
+// ── Load frames for (product, run) ────────────────────────────────────────
+function loadRun(product, run) {
+  curProduct = product;
+  curRun     = run;
+  frames     = manifest.products[product].runs[run] || [];
+
+  stepSlider.max   = Math.max(0, frames.length - 1);
+  stepSlider.value = 0;
+  curStep = 0;
+
+  const initDt = parseTime(run);
+  runLabel.textContent = `Inicjalizacja: ${fmtRun(run)}`;
+
+  showFrame(0);
+}
+
+// ── Display a single frame ────────────────────────────────────────────────
+function showFrame(idx) {
+  if (!frames.length) return;
+  idx = Math.max(0, Math.min(idx, frames.length - 1));
+  curStep = idx;
+  stepSlider.value = idx;
+
+  const f  = frames[idx];
+  const dt = parseTime(f.valid_time);
+  stepValid.textContent = fmtDateTime(dt);
+  stepFh.textContent    = `+${String(f.forecast_hour).padStart(3,'0')} h`;
+
+  btnPrev.disabled = idx === 0;
+  btnNext.disabled = idx === frames.length - 1;
+
+  gfsImg.classList.add('loading');
+  const src = IMG_BASE + f.image;
+  const tmp = new Image();
+  tmp.onload = () => {
+    gfsImg.src = src;
+    gfsImg.classList.remove('loading');
+  };
+  tmp.onerror = () => {
+    gfsImg.classList.remove('loading');
+  };
+  tmp.src = src;
+}
+
+// ── Playback ──────────────────────────────────────────────────────────────
+function startPlay() {
+  btnPlay.textContent = '⏹';
+  btnPlay.classList.add('playing');
+  playTimer = setInterval(() => {
+    const next = curStep + 1;
+    if (next >= frames.length) {
+      showFrame(0);
+    } else {
+      showFrame(next);
+    }
+  }, PLAY_INTERVAL_MS);
+}
+
+function stopPlay() {
+  clearInterval(playTimer);
+  playTimer = null;
+  btnPlay.textContent = '▶';
+  btnPlay.classList.remove('playing');
+}
+
+btnPlay.addEventListener('click', () => {
+  if (playTimer) stopPlay(); else startPlay();
+});
+
+// ── Controls ──────────────────────────────────────────────────────────────
+btnPrev.addEventListener('click', () => {
+  stopPlay();
+  showFrame(curStep - 1);
+});
+btnNext.addEventListener('click', () => {
+  stopPlay();
+  showFrame(curStep + 1);
+});
+stepSlider.addEventListener('input', () => {
+  stopPlay();
+  showFrame(+stepSlider.value);
+});
+
+productSel.addEventListener('change', () => {
+  stopPlay();
+  const run = buildRunOptions(productSel.value);
+  if (run) loadRun(productSel.value, run);
+});
+runSel.addEventListener('change', () => {
+  stopPlay();
+  loadRun(curProduct, runSel.value);
+});
+
+// Keyboard shortcuts
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'SELECT') return;
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { stopPlay(); showFrame(curStep + 1); }
+  if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   { stopPlay(); showFrame(curStep - 1); }
+  if (e.key === ' ') { e.preventDefault(); if (playTimer) stopPlay(); else startPlay(); }
+});
+
+// ── Bootstrap ─────────────────────────────────────────────────────────────
+async function init() {
+  try {
+    const res = await fetch(MANIFEST_URL);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    manifest = await res.json();
+
+    const products = Object.keys(manifest.products);
+    if (!products.length) throw new Error('Brak produktów w manifeście.');
+
+    buildProductOptions();
+    const firstRun = buildRunOptions(products[0]);
+    if (firstRun) loadRun(products[0], firstRun);
+
+    loadingEl.classList.add('hidden');
+    gfsImg.style.display = 'block';
+
+  } catch (err) {
+    loadingEl.classList.add('hidden');
+    noDataEl.classList.add('visible');
+    gfsImg.style.display = 'none';
+    console.warn('GFS manifest error:', err);
+  }
+}
+
+gfsImg.style.display = 'none';
+init();
+</script>
+</body>
+</html>

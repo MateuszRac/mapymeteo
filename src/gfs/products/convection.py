@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import json
+from datetime import datetime
 from pathlib import Path
 
+import matplotlib.pyplot as plt
 import numpy as np
 import xarray as xr
 
-from .base import GfsProduct
+from .base import GfsProduct, _DEFAULT_IMG_DIR, _read_grib_times, _update_manifest
 from ..map_builder import MapBuilder
 from ..reader import GribReader
 
@@ -33,16 +36,18 @@ def _wmaxshear(reader: GribReader) -> tuple[xr.DataArray, xr.DataArray]:
     shear = np.sqrt((u6km - u10) ** 2 + (v6km - v10) ** 2)
     return np.sqrt(2 * cape) * shear, cape
 
-def _mlcape(reader: GribReader) -> tuple[xr.DataArray, xr.DataArray]:
-    """Gets mixed-layer CAPE and return (mlcape, cape)."""
-    mlcape = reader.get_parameter("cape", "surface", 0)
 
-    return mlcape 
+def _mlcape(reader: GribReader) -> xr.DataArray:
+    return reader.get_parameter("cape", "surface", 0)
+
 
 class ConvectionProduct(GfsProduct):
     """Single-timestep CAPE × 0–6 km wind-shear composite."""
 
-    def plot(self, file_path: str | Path) -> None:
+    NAME = "wmaxshear"
+    TITLE = "WmaxShear 0–6 km"
+
+    def _render(self, file_path: str | Path) -> None:
         wmaxshear, cape = _wmaxshear(GribReader(file_path))
 
         ax = self.builder.create_figure()
@@ -52,15 +57,19 @@ class ConvectionProduct(GfsProduct):
         self.builder.add_source_label(ax)
         self.builder.add_title(ax, cape.valid_time.values, prefix="WmaxShear 0–6 km")
 
+
 class MLCape(GfsProduct):
-    """MLCAPE"""
+    """Mixed-layer CAPE."""
+
+    NAME = "mlcape"
+    TITLE = "MLCAPE"
     extent = (10, 30, 47, 56)
 
-    def plot(self, file_path: str | Path) -> None:
+    def _render(self, file_path: str | Path) -> None:
         mlcape = _mlcape(GribReader(file_path))
 
         ax = self.builder.create_figure()
-        cs = self.builder.add_shading(ax, mlcape, vmin=50, vmax=3000, step=100, cmap="gnuplot2_r") #reverse cmap
+        cs = self.builder.add_shading(ax, mlcape, vmin=50, vmax=3000, step=100, cmap="gnuplot2_r")
         self.builder.add_colorbar(ax, cs, "MLCAPE [J/kg]")
         self.builder.add_source_label(ax)
         self.builder.add_title(ax, mlcape.valid_time.values, prefix="MLCAPE")
@@ -69,11 +78,21 @@ class MLCape(GfsProduct):
 class DailyConvectionProduct(GfsProduct):
     """Daily maximum CAPE × wind-shear composite across multiple forecast steps."""
 
-    def plot(self, file_path: str | Path) -> None:
+    NAME = "daily_wmaxshear"
+    TITLE = "WmaxShear 0–6 km — dzienny max"
+
+    def _render(self, file_path: str | Path) -> None:
         raise NotImplementedError("Use plot_multiple() with a list of GRIB files.")
 
-    def plot_multiple(self, file_paths: list[str | Path]) -> None:
-        """Render the daily max composite from *file_paths*."""
+    def plot_multiple(
+        self,
+        file_paths: list[str | Path],
+        save: bool = False,
+        show: bool = True,
+        output_dir: str | Path | None = None,
+    ) -> None:
+        """Render the daily max composite and optionally save/display it."""
+        file_paths = [Path(p) for p in file_paths]
         max_wmaxshear: xr.DataArray | None = None
         last_cape: xr.DataArray | None = None
 
@@ -91,14 +110,45 @@ class DailyConvectionProduct(GfsProduct):
         self.builder.add_source_label(ax)
         self.builder.add_title(ax, last_cape.valid_time.values, prefix="WmaxShear 0–6 km — dzienny max")
 
+        if save:
+            out_dir = Path(output_dir) if output_dir else _DEFAULT_IMG_DIR
+            out_dir.mkdir(parents=True, exist_ok=True)
+
+            init_time, _ = _read_grib_times(file_paths[0])
+            _, valid_time = _read_grib_times(file_paths[-1])
+            init_str = init_time.strftime("%Y%m%d%H%M")
+            valid_str = valid_time.strftime("%Y%m%d%H%M")
+            stem = f"{init_str}_{self.NAME}_{valid_str}"
+
+            plt.savefig(out_dir / f"{stem}.png", dpi=150, bbox_inches="tight")
+
+            forecast_hours = int((valid_time - init_time).total_seconds() / 3600)
+            meta = {
+                "product": self.NAME,
+                "title": self.TITLE,
+                "init_time": init_str,
+                "valid_time": valid_str,
+                "forecast_hour": forecast_hours,
+                "image": f"{stem}.png",
+                "generated_at": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S"),
+            }
+            (out_dir / f"{stem}.json").write_text(
+                json.dumps(meta, indent=2, ensure_ascii=False)
+            )
+            _update_manifest(out_dir, meta)
+
+        if show:
+            plt.show()
+        else:
+            plt.close()
+
     def save_multiple(
         self,
         file_paths: list[str | Path],
         output_path: str | Path,
         dpi: int = 150,
     ) -> None:
-        """Render and save the daily composite without displaying."""
-        import matplotlib.pyplot as plt
-        self.plot_multiple(file_paths)
+        """Render and save the daily composite to a specific path (legacy)."""
+        self.plot_multiple(file_paths, save=False, show=False)
         plt.savefig(output_path, dpi=dpi, bbox_inches="tight")
         plt.close()
