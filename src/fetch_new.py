@@ -22,13 +22,17 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 try:
-    from utils import get_list_of_files, download_file
-    from polrad import decode_h5_file, render_web_overlay, save_overlay_metadata
+    from imgw.client import ImgwClient
+    from radar.decoder import RadarDecoder
+    from radar.renderer import RadarRenderer
+    from radar.palette import RadarPalette
     from transfer.ftp import FtpUploader
     from log_setup import setup_logging
 except ImportError:
-    from src.utils import get_list_of_files, download_file
-    from src.polrad import decode_h5_file, render_web_overlay, save_overlay_metadata
+    from src.imgw.client import ImgwClient
+    from src.radar.decoder import RadarDecoder
+    from src.radar.renderer import RadarRenderer
+    from src.radar.palette import RadarPalette
     from src.transfer.ftp import FtpUploader
     from src.log_setup import setup_logging
 
@@ -43,10 +47,15 @@ DATA_DIR      = PROJECT_PATH / "data" / "polrad"
 OVERLAY_DIR   = PROJECT_PATH / "img" / "polrad" / "overlay"
 MANIFEST      = PROJECT_PATH / "img" / "polrad" / "manifest.json"
 LOG_DIR       = PROJECT_PATH / "logs"
+COLOR_TABLES  = PROJECT_PATH / "data" / "color_tables"
 
 FTP_IMG_DIR  = os.getenv("FTP_REMOTE_IMG_DIR", "img")
 
 IMGW_PATH_BASE = "/Oper/Polrad/Produkty/HVD"
+
+_imgw_client    = ImgwClient()
+_radar_decoder  = RadarDecoder()
+_radar_renderer = RadarRenderer(palette=RadarPalette(pal_dir=COLOR_TABLES))
 
 log = logging.getLogger(__name__)
 
@@ -167,7 +176,7 @@ def process_path(path_info, cfg, manifest, manifest_lock, ftp_uploader=None, max
 
     log.info("[%s] Sprawdzam: %s", key_prefix, path)
 
-    df = get_list_of_files(path)
+    df = _imgw_client.get_file_list(path)
     if df is None or df.empty:
         log.info("[%s] Brak plików na serwerze.", key_prefix)
         return 0, []
@@ -252,12 +261,12 @@ def process_path(path_info, cfg, manifest, manifest_lock, ftp_uploader=None, max
                 h5_path = product_data_dir / row["filename"]
                 log.info("[%s] Pobieram: %s", product_key, row["filename"])
 
-                if not download_file(row["url"], str(h5_path)):
+                if not _imgw_client.download_file(row["url"], str(h5_path)):
                     log.error("[%s] Nie udało się pobrać: %s", product_key, row["filename"])
                     continue
 
                 try:
-                    radar_data = decode_h5_file(str(h5_path), output_projection="EPSG:3857")
+                    radar_data = _radar_decoder.decode(str(h5_path), projection="EPSG:3857")
                 except Exception as e:
                     log.error("[%s] Błąd dekodowania HDF5 (%s): %s",
                               product_key, row["filename"], e)
@@ -268,8 +277,9 @@ def process_path(path_info, cfg, manifest, manifest_lock, ftp_uploader=None, max
                 png_path  = overlay_dir / f"{ts_str}.png"
                 json_path = overlay_dir / f"{ts_str}.json"
 
-                frame_meta = render_web_overlay(radar_data, str(png_path))
-                save_overlay_metadata(frame_meta, str(json_path))
+                frame_meta = _radar_renderer.render_overlay(radar_data, str(png_path), style="noaa")
+                with open(json_path, "w", encoding="utf-8") as _jf:
+                    json.dump(frame_meta, _jf, ensure_ascii=False, indent=2)
                 log.info("[%s] Wygenerowano: %s.png", product_key, ts_str)
 
                 image_rel = "../" + str(png_path.relative_to(PROJECT_PATH)).replace("\\", "/")

@@ -15,11 +15,16 @@ log = logging.getLogger(__name__)
 _API_URL  = "https://danepubliczne.imgw.pl/pl/datastore/getFilesList"
 _BASE_URL = "https://danepubliczne.imgw.pl/pl/"
 
+_UNIT_NORM = {
+    "dBZ": "DBZH", "V": "VRADH", "dBR": "RATE",
+    "RhoHV": "RHOHV", "PhiDP": "PHIDP",
+}
+
 
 class ImgwClient:
     """Pobiera listę plików i ściąga pliki z publicznego API IMGW."""
 
-    def __init__(self, product_type: str = "oper", timeout: tuple = (5, 30)):
+    def __init__(self, product_type: str = "oper", timeout: tuple = (5, 60)):
         self._product_type = product_type
         self._timeout = timeout
 
@@ -59,14 +64,16 @@ class ImgwClient:
         log.debug("Znaleziono %d plików dla: %s", len(df), path)
         return df
 
-    def download_file(self, url: str, output_path: str, max_retries: int = 5) -> bool:
-        """Pobiera plik z URL z retry i backoff wykładniczym."""
+    def download_file(self, url: str, output_path: str, max_retries: int = 5,
+                      chunk_size: int = 65536) -> bool:
+        """Pobiera plik z URL strumieniowo z retry i backoff wykładniczym."""
         for attempt in range(1, max_retries + 1):
             try:
-                resp = requests.get(url, timeout=self._timeout)
-                resp.raise_for_status()
-                with open(output_path, "wb") as f:
-                    f.write(resp.content)
+                with requests.get(url, timeout=self._timeout, stream=True) as resp:
+                    resp.raise_for_status()
+                    with open(output_path, "wb") as f:
+                        for chunk in resp.iter_content(chunk_size=chunk_size):
+                            f.write(chunk)
                 return True
             except (ConnectTimeout, ReadTimeout):
                 if attempt == max_retries:
@@ -89,7 +96,10 @@ class ImgwClient:
     @staticmethod
     def _unit_from_filename(filename: str) -> str | None:
         match = re.match(r"\d{16}([A-Za-z]+)\.", filename)
-        return match.group(1) if match else None
+        if not match:
+            return None
+        raw = match.group(1)
+        return _UNIT_NORM.get(raw, raw)
 
     @staticmethod
     def _level_from_filename(filename: str) -> str | None:

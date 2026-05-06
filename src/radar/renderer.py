@@ -3,6 +3,10 @@
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_agg import FigureCanvasAgg
+import numpy as np
+from PIL import Image
 from pyproj import Transformer
 
 from .palette import RadarPalette
@@ -18,7 +22,7 @@ class RadarRenderer:
                       gdf_borders, gdf_regions=None,
                       extent=None, dpi: int = 100,
                       width: int = 20, height: int = 20,
-                      style: str = "imgw"):
+                      style: str = "noaa"):
         """Generuje statyczny PNG z siatką, granicami i legendą."""
         from mpl_toolkits.axes_grid1 import make_axes_locatable
 
@@ -69,16 +73,12 @@ class RadarRenderer:
 
     def render_overlay(self, radar_data: dict, output_png: str,
                        dataset_key: str = "dataset1",
-                       dpi: int = 250, size: int = 10,
+                       dpi: int = 300, size: int = 12,
                        style: str = "imgw") -> dict:
         """
         Generuje przezroczysty PNG w projekcji EPSG:3857 do L.imageOverlay w Leaflet.
 
-        Leaflet renderuje imageOverlay liniowo w Web Mercatorze (EPSG:3857).
-        Obraz musi być wygenerowany w tej samej projekcji, żeby piksele pokrywały
-        się z podkładem — inaczej wystąpią błędy rozmieszczenia przy wysokich
-        szerokościach geograficznych.
-
+        Używa Figure + FigureCanvasAgg (bez globalnego plt) — thread-safe.
         radar_data musi być zdekodowany z projection="EPSG:3857".
 
         Zwraca: {bounds: [[lat_sw, lon_sw], [lat_ne, lon_ne]], timestamp, quantity, ...}
@@ -91,14 +91,16 @@ class RadarRenderer:
         x_min, x_max = float(x_mesh.min()), float(x_mesh.max())
         y_min, y_max = float(y_mesh.min()), float(y_mesh.max())
 
-        # Narożniki EPSG:3857 -> EPSG:4326 potrzebne dla Leaflet bounds
         to_4326 = Transformer.from_crs("EPSG:3857", "EPSG:4326", always_xy=True)
         lon_sw, lat_sw = to_4326.transform(x_min, y_min)
         lon_ne, lat_ne = to_4326.transform(x_max, y_max)
 
-        # Figura bez marginesów — kluczowe dla prawidłowego alignmentu pikseli
-        fig = plt.figure(figsize=(size, size), dpi=dpi, frameon=False)
+        # Figure + FigureCanvasAgg — thread-safe, nie modyfikuje globalnego stanu plt
+        fig = Figure(figsize=(size, size), dpi=dpi, frameon=False)
+        canvas = FigureCanvasAgg(fig)
         ax = fig.add_axes([0, 0, 1, 1])
+        fig.patch.set_alpha(0)
+        ax.patch.set_alpha(0)
 
         ax.pcolormesh(x_mesh, y_mesh, data, cmap=cmap, norm=norm, shading="flat")
         ax.set_aspect("auto")
@@ -106,9 +108,10 @@ class RadarRenderer:
         ax.set_ylim(y_min, y_max)
         ax.axis("off")
 
-        # pad_inches=0 bez bbox_inches='tight' — zapisuje dokładnie figsize
-        plt.savefig(output_png, dpi=dpi, pad_inches=0, transparent=True)
-        plt.close()
+        canvas.draw()
+        buf_w, buf_h = canvas.get_width_height()
+        buf = np.frombuffer(canvas.buffer_rgba(), dtype=np.uint8).reshape(buf_h, buf_w, 4)
+        Image.fromarray(buf, "RGBA").save(output_png, "PNG")
 
         return {
             "bounds":    [[lat_sw, lon_sw], [lat_ne, lon_ne]],

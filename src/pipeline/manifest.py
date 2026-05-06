@@ -42,6 +42,7 @@ class ManifestManager:
                 "timestamp": frame_meta["timestamp"],
                 "image":     image_rel_path,
                 "bounds":    frame_meta["bounds"],
+                "quantity":  frame_meta.get("quantity", ""),
             })
             frames.sort(key=lambda fr: fr["timestamp"])
 

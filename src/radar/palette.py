@@ -57,6 +57,7 @@ class RadarPalette:
             if pal_path.exists():
                 cmap, norm = self.load_pal_file(pal_path)
                 return cmap, norm, self.LABELS.get(quantity, quantity)
+        
 
         if style in ("imgw", "noaa"):
             return self._imgw(quantity)
@@ -98,7 +99,7 @@ class RadarPalette:
         _jet256 = plt.cm.jet(np.linspace(0, 1, 256))[:, :3]
 
         simple = {
-            "ZDR":   (Normalize(vmin=-1,  vmax=3),   self.LABELS["ZDR"]),
+            "ZDR":   (Normalize(vmin=-1,  vmax=5),   self.LABELS["ZDR"]),
             "RHOHV": (Normalize(vmin=0.7, vmax=1.0), self.LABELS["RHOHV"]),
             "KDP":   (Normalize(vmin=-1,  vmax=3),   self.LABELS["KDP"]),
             "HGHT":  (Normalize(vmin=0,   vmax=15),  self.LABELS["HGHT"]),
@@ -120,11 +121,15 @@ class RadarPalette:
 
     # ── wczytywanie pliku .pal ───────────────────────────────────────────────
 
+    # Jednostki w .pal które wymagają przeliczenia przez Scale (→ m/s lub podstawowe SI)
+    _UNITS_NEED_SCALE = {"mph", "knots", "kts", "kt"}
+
     @staticmethod
     def load_pal_file(pal_path: str | Path) -> tuple:
         """Wczytuje plik .pal (GR2Analyst/NOAA) i zwraca (cmap, norm)."""
         values, starts, ends = [], [], []
         scale = 1.0
+        units = ""
 
         with open(pal_path, encoding="utf-8") as f:
             for raw in f:
@@ -133,13 +138,15 @@ class RadarPalette:
 
                 if upper.startswith("SCALE:"):
                     scale = float(line.split()[1]); continue
+                if upper.startswith("UNITS:"):
+                    units = line.split()[1].lower(); continue
                 if upper.startswith(("RF:", "NF:")):
                     continue
 
                 if upper.startswith("COLOR4:"):
                     p = line.split()
                     r, g, b, a = [min(int(x), 255) for x in p[2:6]]
-                    values.append(float(p[1]) / scale)
+                    values.append(float(p[1]))
                     starts.append((r/255, g/255, b/255, a/255))
                     ends.append(None)
 
@@ -148,12 +155,15 @@ class RadarPalette:
                     r1, g1, b1 = [min(int(x), 255) for x in p[2:5]]
                     r2, g2, b2 = ([min(int(x),255) for x in p[5:8]]
                                   if len(p) >= 8 else (r1, g1, b1))
-                    values.append(float(p[1]) / scale)
+                    values.append(float(p[1]))
                     starts.append((r1/255, g1/255, b1/255, 1.0))
                     ends.append((r2/255, g2/255, b2/255, 1.0))
 
         if not values:
             raise ValueError(f"Brak wpisów color w: {pal_path}")
+
+        if units in RadarPalette._UNITS_NEED_SCALE and scale != 1.0:
+            values = [v / scale for v in values]
 
         order  = np.argsort(values)
         values = [values[i] for i in order]
