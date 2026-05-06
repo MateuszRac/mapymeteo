@@ -73,7 +73,7 @@ class RadarRenderer:
 
     def render_overlay(self, radar_data: dict, output_png: str,
                        dataset_key: str = "dataset1",
-                       dpi: int = 300, size: int = 12,
+                       dpi: int = 150, size: int = 10,
                        style: str = "imgw") -> dict:
         """
         Generuje przezroczysty PNG w projekcji EPSG:3857 do L.imageOverlay w Leaflet.
