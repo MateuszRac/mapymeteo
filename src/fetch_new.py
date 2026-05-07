@@ -26,6 +26,7 @@ try:
     from radar.decoder import RadarDecoder
     from radar.renderer import RadarRenderer
     from radar.palette import RadarPalette
+    from grs.decoder import GrsDecoder
     from transfer.ftp import FtpUploader
     from log_setup import setup_logging
 except ImportError:
@@ -33,6 +34,7 @@ except ImportError:
     from src.radar.decoder import RadarDecoder
     from src.radar.renderer import RadarRenderer
     from src.radar.palette import RadarPalette
+    from src.grs.decoder import GrsDecoder
     from src.transfer.ftp import FtpUploader
     from src.log_setup import setup_logging
 
@@ -44,7 +46,9 @@ PROJECT_PATH = Path(os.getenv("PROJECT_PATH", Path(__file__).parent.parent))
 CONFIG_FILE   = PROJECT_PATH / "config" / "radar_config.json"
 PALETTES_FILE = PROJECT_PATH / "config" / "palettes.json"
 DATA_DIR      = PROJECT_PATH / "data" / "polrad"
+GRS_DATA_DIR  = PROJECT_PATH / "data" / "grs"
 OVERLAY_DIR   = PROJECT_PATH / "img" / "polrad" / "overlay"
+GRS_OVERLAY_DIR = PROJECT_PATH / "img" / "polrad" / "overlay" / "GRS"
 MANIFEST      = PROJECT_PATH / "img" / "polrad" / "manifest.json"
 LOG_DIR       = PROJECT_PATH / "logs"
 COLOR_TABLES  = PROJECT_PATH / "data" / "color_tables"
@@ -52,9 +56,13 @@ COLOR_TABLES  = PROJECT_PATH / "data" / "color_tables"
 FTP_IMG_DIR  = os.getenv("FTP_REMOTE_IMG_DIR", "img")
 
 IMGW_PATH_BASE = "/Oper/Polrad/Produkty/HVD"
+GRS_IMGW_PATH  = "/Oper/Nowcasting/rain_grs/grs_60_asc"
+GRS_PRODUCT_KEY = "GRS"
+GRS_LABEL       = "GRS – Suma opadów 60 min"
 
 _imgw_client    = ImgwClient()
 _radar_decoder  = RadarDecoder()
+_grs_decoder    = GrsDecoder()
 _radar_renderer = RadarRenderer(palette=RadarPalette(pal_dir=COLOR_TABLES))
 
 log = logging.getLogger(__name__)
@@ -298,14 +306,147 @@ def process_path(path_info, cfg, manifest, manifest_lock, ftp_uploader=None, max
 
 
 # ─────────────────────────────────────────────────────────
+#  Przetwarzanie danych GRS (pliki .asc)
+# ─────────────────────────────────────────────────────────
+
+def process_grs_path(cfg, manifest, manifest_lock, ftp_uploader=None, max_new=None):
+    """
+    Analogicznie do process_path, ale dla plików ASC z danymi GRS (sumy opadów).
+
+    Ścieżka IMGW: /Oper/Nowcasting/rain_grs/grs_60_asc
+    Format pliku: YYYYMMDDHHMM_acc0060_grs.asc
+
+    Zwraca (liczba nowych overlayów, lista ścieżek FTP do usunięcia).
+    """
+    import re as _re
+
+    history_minutes = cfg.get("history_minutes", 60)
+    cutoff     = datetime.utcnow() - timedelta(minutes=history_minutes)
+    cutoff_iso = cutoff.strftime("%Y-%m-%dT%H:%M:%S")
+
+    log.info("[%s] Sprawdzam: %s", GRS_PRODUCT_KEY, GRS_IMGW_PATH)
+
+    df = _imgw_client.get_file_list(GRS_IMGW_PATH)
+    if df is None or df.empty:
+        log.info("[%s] Brak plików na serwerze.", GRS_PRODUCT_KEY)
+        return 0, []
+
+    # Filtruj tylko pliki .asc i parsuj timestamp z nazwy pliku
+    df = df[df["filename"].str.endswith(".asc")].copy()
+    if df.empty:
+        log.info("[%s] Brak plików .asc.", GRS_PRODUCT_KEY)
+        return 0, []
+
+    def _parse_grs_ts(filename):
+        m = _re.match(r"(\d{12})", filename)
+        return datetime.strptime(m.group(1), "%Y%m%d%H%M") if m else None
+
+    df["timestamp"] = df["filename"].apply(_parse_grs_ts)
+    df = df[df["timestamp"].notna()].sort_values("timestamp")
+    log.debug("[%s] Łącznie plików .asc na serwerze: %d", GRS_PRODUCT_KEY, len(df))
+
+    GRS_OVERLAY_DIR.mkdir(parents=True, exist_ok=True)
+    GRS_DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+    total         = 0
+    ftp_to_delete = []
+
+    # ── 1. Lokalne kasowanie starych plików + rejestracja do usunięcia z FTP ──
+    deleted_count = 0
+    for png_file in sorted(GRS_OVERLAY_DIR.glob("*.png")):
+        try:
+            png_ts = datetime.strptime(png_file.stem, "%Y%m%d%H%M%S")
+        except ValueError:
+            continue
+        if png_ts < cutoff:
+            log.debug("[%s] Lokalnie usuwam: %s", GRS_PRODUCT_KEY, png_file.name)
+            png_file.unlink()
+            json_file = GRS_OVERLAY_DIR / f"{png_file.stem}.json"
+            json_file.unlink(missing_ok=True)
+            if ftp_uploader:
+                ftp_to_delete.append(_to_remote(png_file))
+                ftp_to_delete.append(_to_remote(json_file))
+            deleted_count += 1
+
+    if deleted_count:
+        log.info("[%s] Lokalnie usunięto %d starych obrazów (poza oknem %d min)",
+                 GRS_PRODUCT_KEY, deleted_count, history_minutes)
+
+    with manifest_lock:
+        manifest_remove_before(manifest, GRS_PRODUCT_KEY, cutoff_iso)
+
+    # ── 2. Ustal które pliki z okna wymagają wygenerowania ───────────────────
+    existing_stems = {f.stem for f in GRS_OVERLAY_DIR.glob("*.png")}
+    df_window = df[df["timestamp"] >= cutoff]
+    df_new = df_window[~df_window["timestamp"].apply(
+        lambda t: t.strftime("%Y%m%d%H%M%S")
+    ).isin(existing_stems)].sort_values("timestamp", ascending=False)
+
+    if max_new is not None:
+        df_new = df_new.head(max_new)
+
+    log.info("[%s] Okno %d min: %d dostępnych, %d już istnieje, %d do wygenerowania%s",
+             GRS_PRODUCT_KEY, history_minutes,
+             len(df_window), len(existing_stems), len(df_new),
+             f" (limit {max_new})" if max_new else "")
+
+    if df_new.empty:
+        return total, ftp_to_delete
+
+    # ── 3. Pobierz, zdekoduj, wygeneruj overlay ───────────────────────────────
+    ctx = ftp_uploader.session() if ftp_uploader else contextlib.nullcontext()
+    with ctx as ftp_session:
+        for _, row in df_new.iterrows():
+            asc_path = GRS_DATA_DIR / row["filename"]
+            log.info("[%s] Pobieram: %s", GRS_PRODUCT_KEY, row["filename"])
+
+            if not _imgw_client.download_file(row["url"], str(asc_path)):
+                log.error("[%s] Nie udało się pobrać: %s", GRS_PRODUCT_KEY, row["filename"])
+                continue
+
+            try:
+                grs_data = _grs_decoder.decode(str(asc_path), projection="EPSG:3857")
+            except Exception as e:
+                log.error("[%s] Błąd dekodowania ASC (%s): %s",
+                          GRS_PRODUCT_KEY, row["filename"], e)
+                asc_path.unlink(missing_ok=True)
+                continue
+
+            ts_str    = grs_data["start_date"].strftime("%Y%m%d%H%M%S")
+            png_path  = GRS_OVERLAY_DIR / f"{ts_str}.png"
+            json_path = GRS_OVERLAY_DIR / f"{ts_str}.json"
+
+            frame_meta = _radar_renderer.render_overlay(grs_data, str(png_path), style="imgw")
+            with open(json_path, "w", encoding="utf-8") as _jf:
+                json.dump(frame_meta, _jf, ensure_ascii=False, indent=2)
+            log.info("[%s] Wygenerowano: %s.png", GRS_PRODUCT_KEY, ts_str)
+
+            image_rel = "../" + str(png_path.relative_to(PROJECT_PATH)).replace("\\", "/")
+            with manifest_lock:
+                manifest_add_frame(manifest, GRS_PRODUCT_KEY, GRS_LABEL, frame_meta, image_rel)
+
+            if ftp_session:
+                ftp_session.upload(png_path, _to_remote(png_path))
+                ftp_session.upload(json_path, _to_remote(json_path))
+
+            asc_path.unlink(missing_ok=True)
+            total += 1
+
+    log.info("[%s] Gotowe: +%d nowych overlayów.", GRS_PRODUCT_KEY, total)
+    return total, ftp_to_delete
+
+
+# ─────────────────────────────────────────────────────────
 #  CLI
 # ─────────────────────────────────────────────────────────
 
 def main():
-    parser = argparse.ArgumentParser(description="Pobierz nowe dane radarowe z IMGW")
+    parser = argparse.ArgumentParser(description="Pobierz nowe dane radarowe i GRS z IMGW")
     grp = parser.add_mutually_exclusive_group()
     grp.add_argument("--radar",  help="Kod radaru (np. pas)")
     grp.add_argument("--compo",  help="Produkt kompozytowy (np. CMAX_250.comp.cmax)")
+    grp.add_argument("--grs",    action="store_true",
+                     help="Tylko dane GRS (sumy opadów ASC)")
     parser.add_argument("--product",   help="Produkt radaru (np. 250.max) — z --radar")
     parser.add_argument("--limit",     type=int, default=1,
                         help="(ignorowany — zachowany dla kompatybilności)")
@@ -325,22 +466,30 @@ def main():
 
     all_paths = all_imgw_paths(cfg)
 
+    # Wybór produktów radarowych i flaga GRS
     if args.radar:
         if not args.product:
             parser.error("--radar wymaga --product")
-        selected = [p for p in all_paths
-                    if p["key_prefix"] == f"{args.radar.upper()}_{args.product}"]
+        selected      = [p for p in all_paths
+                         if p["key_prefix"] == f"{args.radar.upper()}_{args.product}"]
+        process_grs   = False
     elif args.compo:
-        short    = args.compo.split(".")[0]
-        selected = [p for p in all_paths if p["key_prefix"] == f"COMPO_{short}"]
+        short         = args.compo.split(".")[0]
+        selected      = [p for p in all_paths if p["key_prefix"] == f"COMPO_{short}"]
+        process_grs   = False
+    elif args.grs:
+        selected      = []
+        process_grs   = True
     else:
-        selected = all_paths
+        selected      = all_paths
+        process_grs   = True
 
-    if not selected:
+    if not selected and not process_grs:
         log.error("Nie znaleziono pasującej ścieżki w konfiguracji.")
         return 1
 
-    log.info("Produktów do sprawdzenia: %d", len(selected))
+    log.info("Produktów radarowych do sprawdzenia: %d  |  GRS: %s",
+             len(selected), "tak" if process_grs else "nie")
 
     # ── Konfiguracja FTP ─────────────────────────────────────────────────────
     uploader = FtpUploader()
@@ -359,7 +508,8 @@ def main():
     manifest      = load_manifest()
     manifest_lock = threading.Lock()
 
-    max_workers = min(cfg.get("workers", os.cpu_count() or 4), len(selected))
+    n_tasks     = len(selected) + (1 if process_grs else 0)
+    max_workers = min(cfg.get("workers", os.cpu_count() or 4), max(n_tasks, 1))
     log.info("Wątki: %d", max_workers)
 
     total         = 0
@@ -374,15 +524,20 @@ def main():
                 f = executor.submit(
                     process_path, pi, cfg, manifest, manifest_lock, uploader, max_new
                 )
-                futures[f] = pi
+                futures[f] = pi["key_prefix"]
+            if process_grs:
+                f = executor.submit(
+                    process_grs_path, cfg, manifest, manifest_lock, uploader, max_new
+                )
+                futures[f] = GRS_PRODUCT_KEY
             for f in as_completed(futures):
-                pi = futures[f]
+                key = futures[f]
                 try:
                     n, deletes = f.result()
                     total         += n
                     ftp_to_delete += deletes
                 except Exception as e:
-                    log.error("Błąd [%s]: %s", pi["key_prefix"], e, exc_info=True)
+                    log.error("Błąd [%s]: %s", key, e, exc_info=True)
 
     _run_pass("Faza 1 — najnowsza klatka", max_new=1)
 

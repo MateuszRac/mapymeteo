@@ -39,6 +39,7 @@ class RadarPalette:
         "PHIDP": "PhiDP [°]",
         "HGHT":  "Wysokość echa [km]",
         "SPEED": "Wiatr radialny [m/s]",
+        "PRECIP": "Suma opadu [mm]",
     }
 
     def __init__(self, pal_dir: str | Path | None = None):
@@ -91,6 +92,17 @@ class RadarPalette:
             cmap.set_under((0,0,0,0)); cmap.set_bad((0,0,0,0))
             return cmap, BoundaryNorm(bounds, ncolors=len(colors)), self.LABELS["RATE"]
 
+        if quantity == "PRECIP":
+            bounds = [0.1, 0.5, 1, 2, 5, 10, 15, 20, 30, 40, 50, 70]
+            colors = [
+                "#c8f0ff", "#96d2f0", "#3296d2", "#00a0c8",
+                "#00c896", "#96e032", "#ffff00", "#ffc800",
+                "#ff8c00", "#ff3200", "#c80000", "#8c0000",
+            ]
+            cmap = ListedColormap(colors)
+            cmap.set_under((0, 0, 0, 0)); cmap.set_bad((0, 0, 0, 0))
+            return cmap, BoundaryNorm(bounds, ncolors=len(colors)), self.LABELS["PRECIP"]
+
         return self._nexrad(quantity)
 
     # ── palety NEXRAD ────────────────────────────────────────────────────────
@@ -105,6 +117,8 @@ class RadarPalette:
             "HGHT":  (Normalize(vmin=0,   vmax=15),  self.LABELS["HGHT"]),
             "PHIDP": (Normalize(vmin=0,   vmax=180), self.LABELS["PHIDP"]),
             "SPEED": (Normalize(vmin=0,   vmax=30),  self.LABELS["SPEED"]),
+            "PRATE" : (Normalize(vmin=0.01, vmax=10),  self.LABELS["RATE"]),
+            "PRECIP": (Normalize(vmin=0.01,   vmax=50), self.LABELS["PRECIP"]),
         }
         if quantity in simple:
             norm, label = simple[quantity]

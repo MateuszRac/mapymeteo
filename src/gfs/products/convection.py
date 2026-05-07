@@ -46,13 +46,13 @@ class ConvectionProduct(GfsProduct):
 
     NAME = "wmaxshear"
     TITLE = "WmaxShear 0–6 km"
-
+    TITLE = "MLCAPE"
+    extent = (12, 28, 48, 56)
     def _render(self, file_path: str | Path) -> None:
         wmaxshear, cape = _wmaxshear(GribReader(file_path))
 
         ax = self.builder.create_figure()
-        self.extent = (10, 35, 45, 60)
-        cs = self.builder.add_shading(ax, wmaxshear, vmin=250, vmax=2500, step=250, cmap="jet")
+        cs = self.builder.add_shading(ax, wmaxshear, vmin=50, vmax=2500, step=50, cmap="jet")
         self.builder.add_colorbar(ax, cs, "WmaxShear 0–6 km [m²/s²]")
         self.builder.add_source_label(ax)
         self.builder.add_title(ax, cape.valid_time.values, prefix="WmaxShear 0–6 km")
@@ -120,7 +120,7 @@ class DailyConvectionProduct(GfsProduct):
             valid_str = valid_time.strftime("%Y%m%d%H%M")
             stem = f"{init_str}_{self.NAME}_{valid_str}"
 
-            plt.savefig(out_dir / f"{stem}.png", dpi=150, bbox_inches="tight")
+            plt.savefig(out_dir / f"{stem}.png", dpi=150)
 
             forecast_hours = int((valid_time - init_time).total_seconds() / 3600)
             meta = {
@@ -133,7 +133,7 @@ class DailyConvectionProduct(GfsProduct):
                 "generated_at": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S"),
             }
             (out_dir / f"{stem}.json").write_text(
-                json.dumps(meta, indent=2, ensure_ascii=False)
+                json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8"
             )
             _update_manifest(out_dir, meta)
 
@@ -150,5 +150,5 @@ class DailyConvectionProduct(GfsProduct):
     ) -> None:
         """Render and save the daily composite to a specific path (legacy)."""
         self.plot_multiple(file_paths, save=False, show=False)
-        plt.savefig(output_path, dpi=dpi, bbox_inches="tight")
+        plt.savefig(output_path, dpi=dpi)
         plt.close()

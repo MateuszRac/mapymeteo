@@ -1,25 +1,7 @@
-# Project-specific
+# Project-specific generated data
 polrad/
-
-# Environments
-.env
-.venv/
-
-# Claude / tooling cache
-.claude/
-.cache/
-
-# Logs
-*.log
-logs/
-
-# Python cache
-__pycache__/
-*.py[cod]
-
-
-# Project-specific
-polrad/
+data/gfs/
+img/gfs/*.png
 
 # Environments
 .env

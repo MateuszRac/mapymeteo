@@ -36,7 +36,10 @@ def _update_manifest(out_dir: Path, meta: dict) -> None:
     """Update img/gfs/manifest.json with a new frame entry."""
     manifest_path = out_dir / "manifest.json"
     if manifest_path.exists():
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, ValueError):
+            manifest = {"products": {}}
     else:
         manifest = {"products": {}}
 
@@ -59,7 +62,7 @@ def _update_manifest(out_dir: Path, meta: dict) -> None:
         })
         runs[init_time].sort(key=lambda f: f["valid_time"])
 
-    manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False))
+    manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
 class GfsProduct(ABC):
@@ -110,7 +113,7 @@ class GfsProduct(ABC):
             png_path = out_dir / f"{stem}.png"
             json_path = out_dir / f"{stem}.json"
 
-            plt.savefig(png_path, dpi=150, bbox_inches="tight")
+            plt.savefig(png_path, dpi=150)
 
             forecast_hours = int((valid_time - init_time).total_seconds() / 3600)
             meta = {
@@ -122,7 +125,7 @@ class GfsProduct(ABC):
                 "image": f"{stem}.png",
                 "generated_at": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S"),
             }
-            json_path.write_text(json.dumps(meta, indent=2, ensure_ascii=False))
+            json_path.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
             _update_manifest(out_dir, meta)
 
         if show:
@@ -133,5 +136,5 @@ class GfsProduct(ABC):
     def save(self, file_path: str | Path, output_path: str | Path, dpi: int = 150) -> None:
         """Render and save to a specific path without displaying (legacy)."""
         self._render(file_path)
-        plt.savefig(output_path, dpi=dpi, bbox_inches="tight")
+        plt.savefig(output_path, dpi=dpi)
         plt.close()
