@@ -1,4 +1,4 @@
-import { PLAY_MS, MAX_FRAMES } from './config.js?v=20';
+import { PLAY_MS, MAX_FRAMES } from './config.js?v=21';
 
 export function createPlayer({ onFrame, onClear }) {
   let frames   = [];

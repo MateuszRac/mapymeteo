@@ -1,10 +1,10 @@
-import { REFRESH_MS, MAP_CENTER, MAP_ZOOM } from './config.js?v=20';
+import { REFRESH_MS, MAP_CENTER, MAP_ZOOM } from './config.js?v=21';
 import {
   loadAll, refreshManifest, buildIndex, parseKey,
   getStationLabel,
-} from './data.js?v=20';
-import { initMap, showFrame, clearOverlay, setOverlayOpacity, addRadarMarkers, setActiveMarker, clearCoverageMask } from './map.js?v=20';
-import { createPlayer } from './player.js?v=20';
+} from './data.js?v=21';
+import { initMap, showFrame, clearOverlay, setOverlayOpacity, addRadarMarkers, setActiveMarker, clearCoverageMask } from './map.js?v=21';
+import { createPlayer } from './player.js?v=21';
 
 const SPEED_STEPS = [2000, 1200, 800, 500, 250];
 
@@ -58,8 +58,9 @@ async function init() {
     map    = initMap();
     player = createPlayer({
       onFrame: frame => {
-        const isCompo = selKey ? parseKey(selKey).isCompo : false;
-        showFrame(map, frame, parseInt(opacitySl.value, 10) / 100, !isCompo);
+        const _p = selKey ? parseKey(selKey) : null;
+        const isFull = _p ? (_p.isCompo || _p.isGrs) : false;
+        showFrame(map, frame, parseInt(opacitySl.value, 10) / 100, !isFull);
         updateTimeDisplay(frame.timestamp);
         updateColorbar(frame.quantity ?? (selKey ? parseKey(selKey).unit : null));
       },
@@ -111,10 +112,10 @@ function initCookies() {
 // ── Lista stacji ──────────────────────────────────────────────────────────────
 function populateStations() {
   stationSel.innerHTML = '';
-  const compoIds = index.stationIds.filter(id => id === 'COMPO');
-  const radarIds = index.stationIds.filter(id => id !== 'COMPO');
+  const topIds   = index.stationIds.filter(id => id === 'COMPO' || id === 'GRS');
+  const radarIds = index.stationIds.filter(id => id !== 'COMPO' && id !== 'GRS');
 
-  compoIds.forEach(id => stationSel.appendChild(makeOption(id, getStationLabel(id, config))));
+  topIds.forEach(id => stationSel.appendChild(makeOption(id, getStationLabel(id, config))));
   if (radarIds.length) {
     const og = document.createElement('optgroup');
     og.label = 'Radary';
@@ -173,7 +174,7 @@ function selectStation(id, panMap = true) {
   rebuildProductBtns(id);
 
   if (panMap && map) {
-    if (id === 'COMPO') {
+    if (id === 'COMPO' || id === 'GRS') {
       map.flyTo(MAP_CENTER, MAP_ZOOM, { duration: 0.8 });
     } else {
       const st = (config.radar_stations || []).find(r => r.id === id);

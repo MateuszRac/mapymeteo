@@ -28,14 +28,15 @@ COLOR_TABLES = ROOT / "data" / "color_tables"
 OUTPUT       = ROOT / "config" / "palettes.json"
 
 QUANTITIES = {
-    "DBZH":  {"ticks": [5, 10, 20, 30, 40, 50, 60, 65]},
-    "RATE":  {"ticks": [0.01, 0.05, 0.1, 0.5, 1, 5, 10, 50], "log": True},
-    "VRADH": {"ticks": [-30, -20, -10, 0, 10, 20, 30]},
-    "ZDR":   {"ticks": [-1, 0, 1, 2, 3]},
-    "RHOHV": {"ticks": [0.7, 0.8, 0.9, 0.95, 1.0]},
-    "KDP":   {"ticks": [-1, 0, 1, 2, 3]},
-    "PHIDP": {"ticks": [0, 30, 60, 90, 120, 150, 180]},
-    "HGHT":  {"ticks": [0, 3, 6, 9, 12, 15]},
+    "DBZH":   {"ticks": [5, 10, 20, 30, 40, 50, 60, 65]},
+    "RATE":   {"ticks": [0.01, 0.05, 0.1, 0.5, 1, 5, 10, 50], "log": True},
+    "VRADH":  {"ticks": [-30, -20, -10, 0, 10, 20, 30]},
+    "ZDR":    {"ticks": [-1, 0, 1, 2, 3]},
+    "RHOHV":  {"ticks": [0.7, 0.8, 0.9, 0.95, 1.0]},
+    "KDP":    {"ticks": [-1, 0, 1, 2, 3]},
+    "PHIDP":  {"ticks": [0, 30, 60, 90, 120, 150, 180]},
+    "HGHT":   {"ticks": [0, 3, 6, 9, 12, 15]},
+    "PRECIP": {"ticks": [0.1, 1, 5, 10, 20, 50, 100]},
 }
 
 N_AUTO_TICKS = 7  # liczba ticków gdy predefined są poza zakresem
@@ -51,10 +52,8 @@ def _hex(rgba) -> str:
 
 def sample_colors(cmap, norm, n: int = 64) -> list:
     if isinstance(norm, BoundaryNorm):
-        bounds = norm.boundaries
-        mids = [(bounds[i] + bounds[i + 1]) / 2 for i in range(len(bounds) - 1)]
-        vmin, vmax = bounds[0], bounds[-1]
-        return [_hex(cmap((v - vmin) / (vmax - vmin))) for v in mids]
+        n_bins = norm.N
+        return [_hex(cmap((i + 0.5) / n_bins)) for i in range(n_bins)]
     return [_hex(cmap(i / (n - 1))) for i in range(n)]
 
 
@@ -77,14 +76,22 @@ def _auto_ticks(vmin, vmax, n: int, is_log: bool) -> list:
     return result
 
 
-def build_ticks(tick_values, vmin, vmax, is_log: bool) -> list:
+def build_ticks(tick_values, vmin, vmax, is_log: bool, norm=None) -> list:
     in_range = [v for v in tick_values if vmin <= v <= vmax]
     if not in_range:
         return _auto_ticks(vmin, vmax, N_AUTO_TICKS, is_log)
     result = []
-    for v in in_range:
-        label = str(v) if v != int(v) else str(int(v))
-        result.append({"value": v, "label": label, "pct": _pct(v, vmin, vmax, is_log)})
+    if isinstance(norm, BoundaryNorm):
+        bounds = list(norm.boundaries)
+        n_segs = len(bounds) - 1
+        for v in in_range:
+            label = str(v) if v != int(v) else str(int(v))
+            idx = min(range(len(bounds)), key=lambda i: abs(bounds[i] - v))
+            result.append({"value": v, "label": label, "pct": round(idx / n_segs * 100, 3)})
+    else:
+        for v in in_range:
+            label = str(v) if v != int(v) else str(int(v))
+            result.append({"value": v, "label": label, "pct": _pct(v, vmin, vmax, is_log)})
     return result
 
 
@@ -118,12 +125,12 @@ def generate(pal_dir=COLOR_TABLES, style: str | None = None) -> dict:
 
         output[qty] = {
             "label":    label,
-            "type":     "log" if is_log else "linear",
+            "type":     "log" if is_log else ("boundary" if is_discrete else "linear"),
             "discrete": is_discrete,
             "vmin":     vmin,
             "vmax":     vmax,
             "colors":   colors,
-            "ticks":    build_ticks(meta["ticks"], vmin, vmax, is_log),
+            "ticks":    build_ticks(meta["ticks"], vmin, vmax, is_log, norm=norm),
         }
 
     return output

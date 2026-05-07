@@ -56,9 +56,10 @@ COLOR_TABLES  = PROJECT_PATH / "data" / "color_tables"
 FTP_IMG_DIR  = os.getenv("FTP_REMOTE_IMG_DIR", "img")
 
 IMGW_PATH_BASE = "/Oper/Polrad/Produkty/HVD"
-GRS_IMGW_PATH  = "/Oper/Nowcasting/rain_grs/grs_60_asc"
-GRS_PRODUCT_KEY = "GRS"
-GRS_LABEL       = "GRS – Suma opadów 60 min"
+GRS_IMGW_PATH     = "/Oper/Nowcasting/rain_grs/grs_60_asc"
+GRS_PRODUCT_KEY   = "GRS"
+GRS_LABEL         = "GRS – Suma opadów 60 min"
+GRS_HISTORY_MINUTES = 24 * 60  # 24 godziny
 
 _imgw_client    = ImgwClient()
 _radar_decoder  = RadarDecoder()
@@ -320,8 +321,7 @@ def process_grs_path(cfg, manifest, manifest_lock, ftp_uploader=None, max_new=No
     """
     import re as _re
 
-    history_minutes = cfg.get("history_minutes", 60)
-    cutoff     = datetime.utcnow() - timedelta(minutes=history_minutes)
+    cutoff     = datetime.utcnow() - timedelta(minutes=GRS_HISTORY_MINUTES)
     cutoff_iso = cutoff.strftime("%Y-%m-%dT%H:%M:%S")
 
     log.info("[%s] Sprawdzam: %s", GRS_PRODUCT_KEY, GRS_IMGW_PATH)
@@ -370,7 +370,7 @@ def process_grs_path(cfg, manifest, manifest_lock, ftp_uploader=None, max_new=No
 
     if deleted_count:
         log.info("[%s] Lokalnie usunięto %d starych obrazów (poza oknem %d min)",
-                 GRS_PRODUCT_KEY, deleted_count, history_minutes)
+                 GRS_PRODUCT_KEY, deleted_count, GRS_HISTORY_MINUTES)
 
     with manifest_lock:
         manifest_remove_before(manifest, GRS_PRODUCT_KEY, cutoff_iso)
@@ -386,7 +386,7 @@ def process_grs_path(cfg, manifest, manifest_lock, ftp_uploader=None, max_new=No
         df_new = df_new.head(max_new)
 
     log.info("[%s] Okno %d min: %d dostępnych, %d już istnieje, %d do wygenerowania%s",
-             GRS_PRODUCT_KEY, history_minutes,
+             GRS_PRODUCT_KEY, GRS_HISTORY_MINUTES,
              len(df_window), len(existing_stems), len(df_new),
              f" (limit {max_new})" if max_new else "")
 

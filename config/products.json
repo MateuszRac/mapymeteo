@@ -53,5 +53,10 @@
     "short": "DPSRI (mm/h)",
     "long": "Natężenie opadu (mm/h) — podwójna polaryzacja",
     "description": "Precyzyjna ocena ilości wody docierającej do gruntu. Dzięki danym o kształcie kropel eliminuje błędy pomiarowe typowe dla standardowych metod, szczególnie podczas ulew."
+  },
+  "GRS__PRECIP": {
+    "short": "Sumy opadów (mm)",
+    "long": "Suma opadów 60 min [mm] — GRS",
+    "description": "Gridowa suma opadów za ostatnie 60 minut z systemu GRS (nowcasting IMGW). Dane pokrywają obszar całej Polski z rozdzielczością 1 km."
   }
 }

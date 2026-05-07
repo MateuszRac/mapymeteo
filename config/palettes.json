@@ -812,5 +812,36 @@
         "pct": 100.0
       }
     ]
+  },
+  "PRECIP": {
+    "label": "Suma opadów [mm]",
+    "type": "boundary",
+    "discrete": true,
+    "vmin": 0.1,
+    "vmax": 100.0,
+    "colors": [
+      "#c8f0ff",
+      "#96d2f0",
+      "#3296d2",
+      "#00a0c8",
+      "#00c896",
+      "#96e032",
+      "#ffff00",
+      "#ffc800",
+      "#ff8c00",
+      "#ff3200",
+      "#c80000",
+      "#8c0000"
+    ],
+    "ticks": [
+      { "value": 0.1, "label": "0.1", "pct": 0.0 },
+      { "value": 1,   "label": "1",   "pct": 16.667 },
+      { "value": 5,   "label": "5",   "pct": 33.333 },
+      { "value": 10,  "label": "10",  "pct": 41.667 },
+      { "value": 20,  "label": "20",  "pct": 58.333 },
+      { "value": 50,  "label": "50",  "pct": 83.333 },
+      { "value": 70,  "label": "70",  "pct": 91.667 },
+      { "value": 100, "label": "100", "pct": 100.0 }
+    ]
   }
 }

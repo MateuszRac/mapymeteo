@@ -36,11 +36,11 @@ class GrsDecoder:
         cellsize = header["cellsize"]
         nodata   = header.get("nodata_value", -999.0)
 
-        # Centra komórek; wiersze ASC idą od północy (wiersz 0) do południa (wiersz nrows-1)
-        x_centers = xll + (np.arange(ncols) + 0.5) * cellsize
-        y_centers = yll + (nrows - np.arange(nrows) - 0.5) * cellsize
+        # Krawędzie komórek (shading='flat' wymaga siatki o 1 większej niż dane)
+        x_edges = xll + np.arange(ncols + 1) * cellsize
+        y_edges = yll + (nrows - np.arange(nrows + 1)) * cellsize
 
-        xx, yy = np.meshgrid(x_centers, y_centers)
+        xx, yy = np.meshgrid(x_edges, y_edges)
 
         transformer = Transformer.from_crs(_GRS_CRS, projection, always_xy=True)
         x_mesh, y_mesh = transformer.transform(xx, yy)

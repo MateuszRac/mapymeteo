@@ -1,4 +1,4 @@
-import { MANIFEST_URL, CONFIG_URL, PRODUCTS_URL, PALETTES_URL } from './config.js?v=20';
+import { MANIFEST_URL, CONFIG_URL, PRODUCTS_URL, PALETTES_URL } from './config.js?v=21';
 
 export async function loadAll() {
   const [config, manifest, products, palettes] = await Promise.all([
@@ -21,11 +21,15 @@ export function parseKey(key) {
   const unit   = dbl >= 0 ? key.slice(dbl + 2) : null;
 
   if (prefix.startsWith('COMPO_')) {
-    return { isCompo: true, stationId: 'COMPO', productType: prefix.slice(6), unit, key };
+    return { isCompo: true, isGrs: false, stationId: 'COMPO', productType: prefix.slice(6), unit, key };
+  }
+  if (prefix === 'GRS') {
+    return { isCompo: false, isGrs: true, stationId: 'GRS', productType: 'GRS', unit: unit ?? 'PRECIP', key };
   }
   const sep = prefix.indexOf('_');
   return {
     isCompo:     false,
+    isGrs:       false,
     stationId:   prefix.slice(0, sep).toLowerCase(),
     productType: prefix.slice(sep + 1),
     unit,
@@ -35,7 +39,7 @@ export function parseKey(key) {
 
 export function buildIndex(manifest, config) {
   const byStation    = {};
-  const stationOrder = ['COMPO', ...(config.radar_stations || []).map(s => s.id)];
+  const stationOrder = ['COMPO', 'GRS', ...(config.radar_stations || []).map(s => s.id)];
 
   for (const key of Object.keys(manifest.products ?? {})) {
     const p = parseKey(key);
@@ -56,6 +60,7 @@ export function buildIndex(manifest, config) {
 
 export function getStationLabel(stationId, config) {
   if (stationId === 'COMPO') return 'Polska';
+  if (stationId === 'GRS')   return 'Sumy opadów GRS';
   const s = (config.radar_stations || []).find(r => r.id === stationId);
   return s ? s.name : stationId.toUpperCase();
 }

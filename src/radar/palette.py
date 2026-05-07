@@ -93,7 +93,7 @@ class RadarPalette:
             return cmap, BoundaryNorm(bounds, ncolors=len(colors)), self.LABELS["RATE"]
 
         if quantity == "PRECIP":
-            bounds = [0.1, 0.5, 1, 2, 5, 10, 15, 20, 30, 40, 50, 70]
+            bounds = [0.1, 0.5, 1, 2, 5, 10, 15, 20, 30, 40, 50, 70, 100]  # 13 granic → 12 przedziałów
             colors = [
                 "#c8f0ff", "#96d2f0", "#3296d2", "#00a0c8",
                 "#00c896", "#96e032", "#ffff00", "#ffc800",
