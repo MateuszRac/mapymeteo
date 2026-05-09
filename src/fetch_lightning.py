@@ -11,6 +11,7 @@ Użycie:
 import argparse
 import json
 import logging
+import math
 import os
 import re
 import shutil
@@ -45,6 +46,25 @@ LON_MIN, LON_MAX = 10.0, 30.0
 LAT_MIN, LAT_MAX = 40.0, 60.0
 SLOT_MINUTES    = 10
 FTP_REMOTE_DIR  = os.getenv("FTP_REMOTE_IMG_DIR", "img")
+
+# Przeliczniki stopień ↔ km (dla centrum obszaru ~52°N)
+_CENTER_LAT   = 52.0
+_KM_PER_LAT   = 111.32
+_KM_PER_LON   = 111.32 * math.cos(math.radians(_CENTER_LAT))  # ≈ 68.5 km/°
+
+# Stałe prognozy — wszystkie w km lub km/h
+FORECAST_RECENT_MIN      = 10    # okno aktualnego obszaru [min]
+FORECAST_MOTION_H        = 2     # okno estymacji prędkości [h]
+FORECAST_AHEAD_H         = 1     # horyzont prognozy [h]
+FORECAST_EPS_KM          = 30    # promień klastrowania DBSCAN [km]
+FORECAST_SEARCH_KM       = 60    # promień szukania historii dla klastra [km]
+FORECAST_BUFFER_KM       = 5     # bazowy bufor wokół bieżącego polygonu [km]
+FORECAST_SPREAD_KM_PER_H = 1.0   # przyrost buforu końcowego z czasem [km/h]
+FORECAST_SPREAD_FRACTION = 0.05  # przyrost buforu końcowego z odległością [udział dystansu]
+FORECAST_MAX_KMH         = 100   # maks. prędkość komórki [km/h]
+FORECAST_MIN_SAMPLES     = 3     # min punktów w klastrze DBSCAN
+FORECAST_MIN_CLUSTER     = 5     # min punktów klastra do rysowania polygonu
+FORECAST_INTENSE_DENS    = 10.0  # próg gęstości dla klastra intensywnego [/km²/10min]
 
 log = logging.getLogger("fetch_lightning")
 
@@ -249,10 +269,319 @@ def main(history_hours: int = 6) -> int:
     return 0
 
 
+_SCALE = np.array([_KM_PER_LAT, _KM_PER_LON])   # mnożnik deg → km
+
+
+def _compass(deg: float) -> str:
+    """Kierunek ruchu w notacji różyczkowej (16 punktów)."""
+    dirs = ["N","NNE","NE","ENE","E","ESE","SE","SSE",
+            "S","SSW","SW","WSW","W","WNW","NW","NNW"]
+    return dirs[round(deg / 22.5) % 16]
+
+
+def _polygon_area_km2(hull_km: np.ndarray) -> float:
+    """Pole polygonu ze wzoru Gaussa (shoelace), wynik w km²."""
+    if len(hull_km) < 3:
+        return 0.0
+    y = hull_km[:, 0]   # lat_km
+    x = hull_km[:, 1]   # lon_km
+    i = np.arange(len(hull_km))
+    j = (i + 1) % len(hull_km)
+    return float(abs((x[i] * y[j] - x[j] * y[i]).sum()) / 2.0)
+
+
+def _max_density_km2(cl_km: np.ndarray, cl_n: np.ndarray,
+                     cell_km: float = 10.0) -> float:
+    """Maksymalna gęstość wyładowań w siatce cell_km × cell_km [/km²]."""
+    if len(cl_km) == 0:
+        return 0.0
+    lat_min = cl_km[:, 0].min()
+    lon_min = cl_km[:, 1].min()
+    grid: dict[tuple, int] = {}
+    for pt, n in zip(cl_km, cl_n):
+        key = (int((pt[0] - lat_min) / cell_km), int((pt[1] - lon_min) / cell_km))
+        grid[key] = grid.get(key, 0) + int(n)
+    return round(max(grid.values()) / cell_km ** 2, 4) if grid else 0.0
+
+
+def _to_km(pts_deg: np.ndarray) -> np.ndarray:
+    return pts_deg * _SCALE
+
+
+def _to_deg(pts_km: np.ndarray) -> np.ndarray:
+    return pts_km / _SCALE
+
+
+def _dbscan(pts_km: np.ndarray, eps_km: float, min_samples: int) -> np.ndarray:
+    """DBSCAN w czystym numpy, odległości w km. Zwraca etykiety (-1 = szum)."""
+    n       = len(pts_km)
+    labels  = np.full(n, -1, dtype=int)
+    visited = np.zeros(n, dtype=bool)
+    dists   = np.sqrt(((pts_km[:, None] - pts_km[None, :]) ** 2).sum(axis=2))
+    cid     = 0
+
+    for i in range(n):
+        if visited[i]:
+            continue
+        visited[i] = True
+        nbrs = np.where(dists[i] <= eps_km)[0]
+        if len(nbrs) < min_samples:
+            continue
+        labels[i] = cid
+        seeds = set(nbrs.tolist())
+        seeds.discard(i)
+        while seeds:
+            q = seeds.pop()
+            if not visited[q]:
+                visited[q] = True
+                q_nbrs = np.where(dists[q] <= eps_km)[0]
+                if len(q_nbrs) >= min_samples:
+                    seeds.update(q_nbrs.tolist())
+            if labels[q] == -1:
+                labels[q] = cid
+        cid += 1
+
+    return labels
+
+
+def _convex_hull_km(pts_km: np.ndarray) -> np.ndarray:
+    """Andrew's monotone chain O(n log n), wejście i wyjście w km."""
+    if len(pts_km) < 3:
+        return pts_km
+    # sortuj po x (lon_km), potem y (lat_km)
+    s = pts_km[np.lexsort((pts_km[:, 0], pts_km[:, 1]))]
+
+    def cross(O, A, B):
+        return (A[1] - O[1]) * (B[0] - O[0]) - (A[0] - O[0]) * (B[1] - O[1])
+
+    lo: list = []
+    for p in s:
+        while len(lo) >= 2 and cross(lo[-2], lo[-1], p) <= 0:
+            lo.pop()
+        lo.append(p)
+    hi: list = []
+    for p in s[::-1]:
+        while len(hi) >= 2 and cross(hi[-2], hi[-1], p) <= 0:
+            hi.pop()
+        hi.append(p)
+    lo.pop()
+    hi.pop()
+    return np.array(lo + hi)
+
+
+def _buffer_hull_km(hull_km: np.ndarray, buffer_km: float) -> np.ndarray:
+    """Przesuwa wierzchołki otoczki radialnie od centroidu o buffer_km [km]."""
+    c     = hull_km.mean(axis=0)
+    diff  = hull_km - c
+    norms = np.linalg.norm(diff, axis=1, keepdims=True)
+    norms = np.where(norms < 1e-6, buffer_km, norms)
+    return hull_km + buffer_km * diff / norms
+
+
+def _estimate_velocity(
+    bins_by_t: dict, center_km: np.ndarray
+) -> tuple[float, float, float]:
+    """Regresja centroidów historycznych punktów śledząc klaster wstecz slot po slot.
+
+    Zaczyna od aktualnego centroidu (center_km) i dla każdego binu historycznego
+    szuka punktów blisko POPRZEDNIO znalezionego centroidu — nie stałego centrum.
+    Dzięki temu poprawnie śledzi burze, które przesunęły się o >FORECAST_SEARCH_KM.
+
+    Zwraca (dlat_deg, dlon_deg, speed_kmh) — przemieszczenie za FORECAST_AHEAD_H h.
+    """
+    if not bins_by_t:
+        return 0.0, 0.0, 0.0
+
+    sorted_bins = sorted(bins_by_t.items(), key=lambda x: x[0], reverse=True)
+
+    chain: list[tuple[float, np.ndarray]] = []
+    search_pos = center_km.copy()
+
+    for bk, pts_list in sorted_bins:
+        pts_km = np.array([[lat * _KM_PER_LAT, lon * _KM_PER_LON]
+                           for lat, lon, n in pts_list])
+        n_vals = np.array([n for lat, lon, n in pts_list], dtype=float)
+        dists  = np.linalg.norm(pts_km - search_pos, axis=1)
+        near   = dists <= FORECAST_SEARCH_KM
+        if near.sum() < 2:
+            continue
+        w        = n_vals[near]
+        centroid = (pts_km[near] * w[:, None]).sum(axis=0) / w.sum()
+        chain.append((bk, centroid))
+        search_pos = centroid   # kolejny krok szuka blisko tego centroidu
+
+    if len(chain) < 2:
+        return 0.0, 0.0, 0.0
+
+    chain.sort(key=lambda c: c[0])
+    nc      = len(chain)
+    weights = np.arange(1, nc + 1, dtype=float)   # nowsze sloty → wyższa waga
+    times   = np.array([c[0]    for c in chain])
+    ys      = np.array([c[1][0] for c in chain])   # lat [km]
+    xs      = np.array([c[1][1] for c in chain])   # lon [km]
+
+    # Normalizuj czas od zera — Unix timestamps (~1.7e9) powodują
+    # katastrofalne skrócenie w lstsq i dają slope ≈ 0.
+    t0     = times[0]
+    tn     = times - t0   # sekundy od najstarszego binu [0 … ~10800]
+
+    T  = np.column_stack([tn, np.ones(nc)])
+    Tw = T * weights[:, None]
+    try:
+        cy, *_ = np.linalg.lstsq(Tw, ys * weights, rcond=None)
+        cx, *_ = np.linalg.lstsq(Tw, xs * weights, rcond=None)
+    except np.linalg.LinAlgError:
+        return 0.0, 0.0, 0.0
+
+    vel_y_kmh = float(cy[0]) * 3600.0   # km/s → km/h
+    vel_x_kmh = float(cx[0]) * 3600.0
+    speed_kmh = math.sqrt(vel_y_kmh ** 2 + vel_x_kmh ** 2)
+
+    if speed_kmh > FORECAST_MAX_KMH:
+        scale      = FORECAST_MAX_KMH / speed_kmh
+        vel_y_kmh *= scale
+        vel_x_kmh *= scale
+        speed_kmh  = FORECAST_MAX_KMH
+
+    dlat = vel_y_kmh * FORECAST_AHEAD_H / _KM_PER_LAT
+    dlon = vel_x_kmh * FORECAST_AHEAD_H / _KM_PER_LON
+    return dlat, dlon, round(speed_kmh)
+
+
+def _compute_forecast(slots: dict, now: datetime) -> dict | None:
+    """Klasteryzuje wyładowania (DBSCAN) i dla każdego klastra liczy prognozę.
+
+    Wszystkie odległości wewnętrznie w km; JSON zawiera stopnie + speed_kmh.
+    Zwraca {"clusters": [...], "valid_until": "..."} lub None.
+    """
+    now_naive     = _to_naive_utc(now)
+    recent_cutoff = now_naive - timedelta(minutes=FORECAST_RECENT_MIN)
+    motion_cutoff = now_naive - timedelta(hours=FORECAST_MOTION_H)
+
+    recent_deg: list[list[float]] = []
+    recent_n:   list[int]         = []
+    recent_t:   list[float]       = []
+    bins_by_t:  dict[float, list] = {}
+
+    for slot in slots.values():
+        if not slot.get("ok") or not slot.get("groups"):
+            continue
+        for g in slot["groups"]:
+            try:
+                t = datetime.strptime(g["t"], "%Y-%m-%dT%H:%M:%S")
+            except (ValueError, KeyError):
+                continue
+            lat, lon, n = g["lat"], g["lon"], int(g.get("n", 1))
+
+            if t >= recent_cutoff:
+                recent_deg.append([lat, lon])
+                recent_n.append(n)
+                recent_t.append(t.timestamp())
+            if t >= motion_cutoff:
+                b  = t.replace(second=0, microsecond=0)
+                b  = b.replace(minute=(b.minute // SLOT_MINUTES) * SLOT_MINUTES)
+                bins_by_t.setdefault(b.timestamp(), []).append((lat, lon, n))
+
+    if len(recent_deg) < FORECAST_MIN_CLUSTER:
+        return None
+
+    pts_deg  = np.array(recent_deg)
+    pts_km   = _to_km(pts_deg)
+    pts_n    = np.array(recent_n,  dtype=int)
+    pts_t    = np.array(recent_t,  dtype=float)
+    labels   = _dbscan(pts_km, FORECAST_EPS_KM, FORECAST_MIN_SAMPLES)
+    t10_cut  = (now_naive - timedelta(minutes=10)).timestamp()
+
+    clusters_out = []
+    for cid in set(labels):
+        if cid == -1:
+            continue
+        mask   = labels == cid
+        cl_km  = pts_km[mask]
+        cl_deg = pts_deg[mask]
+        cl_n   = pts_n[mask]
+        cl_t   = pts_t[mask]
+        if len(cl_km) < FORECAST_MIN_CLUSTER:
+            continue
+
+        center_km             = cl_km.mean(axis=0)
+        center_deg            = cl_deg.mean(axis=0)
+        dlat, dlon, speed_kmh = _estimate_velocity(bins_by_t, center_km)
+
+        # Kierunek ruchu (0° = N, zgodnie z ruchem wskazówek zegara)
+        dy_km         = dlat * _KM_PER_LAT
+        dx_km         = dlon * _KM_PER_LON
+        dir_deg       = round(math.degrees(math.atan2(dx_km, dy_km)) % 360)
+        dir_compass   = _compass(dir_deg)
+
+        # Pole aktualnego klastra (przed rzutowaniem)
+        hull_cur_km   = _convex_hull_km(cl_km)
+        area_km2      = round(_polygon_area_km2(hull_cur_km), 1)
+
+        # Statystyki z ostatnich 10 min
+        m10           = cl_t >= t10_cut
+        cl_km_10      = cl_km[m10]
+        cl_n_10       = cl_n[m10]
+        count_10min   = int(cl_n_10.sum()) if m10.any() else 0
+        density_km2   = round(count_10min / area_km2, 4) if area_km2 > 0 else 0.0
+        max_dens_km2  = _max_density_km2(cl_km_10, cl_n_10)
+
+        # Polygon prognozy: stożek niepewności.
+        # Bufor bieżący (mały) i przesunięty (rosnący z czasem i dystansem),
+        # następnie wypukła otoczka obu — naturalny kształt stożka.
+        displacement_km = np.array([dlat * _KM_PER_LAT, dlon * _KM_PER_LON])
+        dist_km         = float(np.linalg.norm(displacement_km))
+        end_buffer_km   = (FORECAST_BUFFER_KM
+                           + FORECAST_SPREAD_KM_PER_H * FORECAST_AHEAD_H
+                           + dist_km * FORECAST_SPREAD_FRACTION)
+
+        proj_km      = cl_km + displacement_km
+        hull_proj_km = _convex_hull_km(proj_km)
+        if len(hull_cur_km) < 3 or len(hull_proj_km) < 3:
+            continue
+
+        buf_cur_km  = _buffer_hull_km(hull_cur_km,  FORECAST_BUFFER_KM)
+        buf_proj_km = _buffer_hull_km(hull_proj_km, end_buffer_km)
+        swept_km    = _convex_hull_km(np.vstack([buf_cur_km, buf_proj_km]))
+        if len(swept_km) < 3:
+            continue
+        poly_deg = _to_deg(swept_km)
+
+        cluster_type = "intense" if max_dens_km2 >= FORECAST_INTENSE_DENS else "normal"
+
+        clusters_out.append({
+            "polygon":           [[round(float(p[0]), 4), round(float(p[1]), 4)] for p in poly_deg],
+            "cluster_type":      cluster_type,
+            "speed_kmh":         speed_kmh,
+            "direction_deg":     dir_deg,
+            "direction_compass": dir_compass,
+            "stats": {
+                "count_10min":     count_10min,
+                "area_km2":        area_km2,
+                "density_km2":     density_km2,
+                "max_density_km2": max_dens_km2,
+            },
+        })
+
+    if not clusters_out:
+        return None
+
+    valid_until = (now_naive + timedelta(hours=FORECAST_AHEAD_H)).strftime("%Y-%m-%dT%H:%M:%S")
+    return {"clusters": clusters_out, "valid_until": valid_until}
+
+
 def _save(slots: dict, now: datetime) -> None:
+    forecast = _compute_forecast(slots, now)
+    if forecast:
+        log.info("Prognoza: %d klastrów, ważna do %s",
+                 len(forecast["clusters"]), forecast["valid_until"])
+    else:
+        log.info("Prognoza: za mało danych")
+
     data = {
         "generated": _to_naive_utc(now).strftime("%Y-%m-%dT%H:%M:%S"),
-        "slots": slots,
+        "slots":     slots,
+        "forecast":  forecast,
     }
     OUTPUT_JSON.write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     log.info("Zapisano: %s (%d slotów)", OUTPUT_JSON, len(slots))

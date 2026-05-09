@@ -282,6 +282,20 @@ body {
 .sp-val { font-size: .78rem; color: var(--text); min-width: 34px; text-align: right; }
 .sp-icon { font-size: .85rem; flex-shrink: 0; }
 
+.map-style-btn {
+  flex: 1;
+  background: rgba(22,31,53,.75);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 0;
+  font-size: .75rem;
+  cursor: pointer;
+  transition: background .12s, color .12s, border-color .12s;
+}
+.map-style-btn:hover { background: #243050; border-color: #3a5080; color: var(--text); }
+.map-style-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+
 .sp-copy-year {
   margin-top: 16px;
   color: var(--muted) !important;
@@ -506,6 +520,13 @@ body {
 .lgtn-opt:hover { background: rgba(255,255,255,.07); color: var(--text); }
 .lgtn-opt.active { color: #ffe000; font-weight: 600; }
 
+.lgtn-sep {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 2px;
+  border: none;
+}
+
 /* ── Lightning warning ── */
 #lightning-warning {
   position: fixed;
@@ -599,6 +620,10 @@ body {
 .lgtn-popup td:first-child {
   color: #8aaac8;
   padding-right: 10px;
+}
+.fc-sep {
+  padding: 3px 0 2px;
+  border-top: 1px solid #2d4470;
 }
 
 .leaflet-popup-content-wrapper {

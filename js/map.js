@@ -1,7 +1,25 @@
 import { MAP_CENTER, MAP_ZOOM } from './config.js?v=22';
 
+const TILE_STYLES = {
+  dark: {
+    url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions">CARTO</a>',
+    subdomains: 'abcd',
+    maxZoom: 19,
+  },
+  light: {
+    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    subdomains: 'abc',
+    maxZoom: 19,
+  },
+};
+
+let _map       = null;
+let _tileLayer = null;
+
 export function initMap() {
-  const map = L.map('map', {
+  const map = _map = L.map('map', {
     center: MAP_CENTER,
     zoom: MAP_ZOOM,
     zoomControl: true,
@@ -9,16 +27,28 @@ export function initMap() {
     maxBounds: [[37, 5], [63, 35]],
     maxBoundsViscosity: 1.0,
   });
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-    maxZoom: 19,
-  }).addTo(map);
+  _applyTiles(localStorage.getItem('mapymeteo_map_style') || 'light');
 
   map.createPane('coveragePane');
   map.getPane('coveragePane').style.zIndex  = 300; // między tiles(200) a imageOverlay(400)
   map.getPane('coveragePane').style.pointerEvents = 'none';
 
   return map;
+}
+
+function _applyTiles(style) {
+  const t = TILE_STYLES[style] ?? TILE_STYLES.dark;
+  if (_tileLayer) _tileLayer.remove();
+  _tileLayer = L.tileLayer(t.url, {
+    attribution: t.attribution,
+    subdomains:  t.subdomains,
+    maxZoom:     t.maxZoom,
+  }).addTo(_map);
+}
+
+export function setMapStyle(style) {
+  localStorage.setItem('mapymeteo_map_style', style);
+  _applyTiles(style);
 }
 
 // ── Overlay radarowy ──────────────────────────────────────────────────────────

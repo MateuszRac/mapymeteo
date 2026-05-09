@@ -73,13 +73,15 @@
 <div id="side-actions">
   <button class="side-btn" data-panel="support" title="Wsparcie projektu">☕</button>
   <div id="lightning-wrap">
-    <button id="btn-lightning" class="side-lightning-btn active" title="Wyładowania atmosferyczne (MTG-LI)">⚡</button>
+    <button id="btn-lightning" class="side-lightning-btn" title="Wyładowania atmosferyczne (MTG-LI)">⚡</button>
     <div id="lightning-menu" class="hidden">
-      <button class="lgtn-opt" data-mode="off">Wyłączone</button>
-      <button class="lgtn-opt active" data-mode="radar">Bieżące okno</button>
+      <button class="lgtn-opt active" data-mode="off">Wyłączone</button>
+      <button class="lgtn-opt" data-mode="radar">Bieżące okno</button>
       <button class="lgtn-opt" data-mode="1h">Ostatnia 1h</button>
       <button class="lgtn-opt" data-mode="3h">Ostatnie 3h</button>
       <button class="lgtn-opt" data-mode="6h">Ostatnie 6h</button>
+      <div class="lgtn-sep"></div>
+      <button class="lgtn-opt active" id="btn-forecast-toggle">Prognoza ruchu +1h</button>
     </div>
   </div>
   <button class="side-btn" data-panel="info"    title="O wyświetlanym produkcie">ℹ</button>
@@ -115,6 +117,13 @@
       </div>
     </div>
     <div class="sp-row">
+      <span class="sp-label">Styl mapy</span>
+      <div class="sp-ctrl">
+        <button class="map-style-btn" data-style="dark">Ciemna</button>
+        <button class="map-style-btn" data-style="light">Jasna</button>
+      </div>
+    </div>
+    <div class="sp-row">
       <span class="sp-label">Prędkość animacji</span>
       <div class="sp-ctrl">
         <span class="sp-icon">🐢</span>
@@ -126,7 +135,7 @@
 
   <div id="sp-copy" class="sp-page">
     <p><strong>Dane radarowe:</strong><br>Źródłem pochodzenia danych jest Instytut Meteorologii i Gospodarki Wodnej – Państwowy Instytut Badawczy. Dane Instytutu Meteorologii i Gospodarki Wodnej – Państwowego Instytutu Badawczego zostały przetworzone</p>
-    <p><strong>Podkład mapowy:</strong><br>© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors</p>
+    <p><strong>Podkład mapowy:</strong><br>© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors<br>Tryb ciemny: © <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a></p>
     <p><strong>Silnik mapy:</strong><br><a href="https://leafletjs.com" target="_blank" rel="noopener">Leaflet</a> v1.9.4</p>
     <p class="sp-copy-year">© 2024–2026 MapyMeteo</p>
   </div>

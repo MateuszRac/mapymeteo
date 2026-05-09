@@ -3,12 +3,15 @@ import {
   loadAll, refreshManifest, buildIndex, parseKey,
   getStationLabel,
 } from './data.js?v=22';
-import { initMap, showFrame, clearOverlay, setOverlayOpacity, addRadarMarkers, setActiveMarker, clearCoverageMask } from './map.js?v=22';
+import { initMap, showFrame, clearOverlay, setOverlayOpacity, addRadarMarkers, setActiveMarker, clearCoverageMask, setMapStyle } from './map.js?v=22';
 import { createPlayer } from './player.js?v=22';
 import {
   initLightningLayer, loadLightning, refreshLightning,
-  getLightningMode, setLightningMode, setLightningOpacity, renderLightning,
+  getLightningData, getLightningMode, setLightningMode, setLightningOpacity, renderLightning,
 } from './lightning.js?v=22';
+import {
+  initForecastLayer, updateForecast, getForecastVisible, setForecastVisible,
+} from './lightning_forecast.js?v=22';
 
 const SPEED_STEPS = [2000, 1200, 800, 500, 250];
 
@@ -85,7 +88,9 @@ async function init() {
     });
     addRadarMarkers(map, config.radar_stations || [], id => selectStation(id));
     initLightningLayer(map);
+    initForecastLayer(map);
     await loadLightning();
+    updateForecast(getLightningData());
     populateStations();
     selectFirstAvailable();
     initLightningButtons();
@@ -392,7 +397,27 @@ function initLightningButtons() {
     });
   });
 
+  const btnForecast = document.getElementById('btn-forecast-toggle');
+  btnForecast?.addEventListener('click', e => {
+    e.stopPropagation();
+    const nowOn = getForecastVisible();
+    setForecastVisible(!nowOn);
+    btnForecast.classList.toggle('active', !nowOn);
+    if (!nowOn) updateForecast(getLightningData());
+  });
+
   document.addEventListener('click', () => lightningMenu?.classList.add('hidden'));
+
+  const curStyle = localStorage.getItem('mapymeteo_map_style') || 'dark';
+  document.querySelectorAll('.map-style-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.style === curStyle);
+    btn.addEventListener('click', () => {
+      setMapStyle(btn.dataset.style);
+      document.querySelectorAll('.map-style-btn').forEach(b =>
+        b.classList.toggle('active', b === btn)
+      );
+    });
+  });
 
   lightningOpacitySl?.addEventListener('input', () => {
     const val = parseInt(lightningOpacitySl.value, 10);
@@ -426,12 +451,12 @@ setInterval(async () => {
 
 setInterval(async () => {
   await refreshLightning();
-  // Jeśli tryb 3h aktywny — przerenderuj z aktualnym timestamp
   if (getLightningMode() !== 'off') {
     const curFrame = player?.currentFrame;
     const { missing } = renderLightning(curFrame?.timestamp ?? null);
     setLightningWarning(getLightningMode() === 'radar' && missing);
   }
+  updateForecast(getLightningData());
 }, REFRESH_MS);
 
 // ── Start ─────────────────────────────────────────────────────────────────────

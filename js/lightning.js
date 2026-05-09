@@ -14,7 +14,7 @@ const HISTORY_WINDOWS = { '1h': 3600000, '3h': 10800000, '6h': 21600000 };
 
 let _data    = null;    // załadowany lightning.json
 let _layer   = null;    // L.LayerGroup
-let _mode    = 'radar'; // 'off' | 'radar' | '1h' | '3h' | '6h'
+let _mode    = 'off';   // 'off' | 'radar' | '1h' | '3h' | '6h'
 let _opacity = 0.80;    // fillOpacity (0–1)
 
 // ── Pomocnicze ────────────────────────────────────────────────────────────────
@@ -85,6 +85,7 @@ export async function refreshLightning() {
   } catch (_) {}
 }
 
+export function getLightningData()           { return _data; }
 export function getLightningMode()           { return _mode; }
 export function setLightningMode(mode)       { _mode = mode; }
 export function setLightningOpacity(opacity) { _opacity = opacity; }
