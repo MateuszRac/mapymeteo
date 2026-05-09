@@ -261,7 +261,7 @@ def _save(slots: dict, now: datetime) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Pobierz dane wyładowań MTG-LI")
     parser.add_argument("--log-level", default="INFO", metavar="LEVEL")
-    parser.add_argument("--history-hours", type=int, default=3, metavar="H")
+    parser.add_argument("--history-hours", type=int, default=6, metavar="H")
     args = parser.parse_args()
 
     setup_logging(LOG_DIR, level=args.log_level.upper())

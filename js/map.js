@@ -1,7 +1,14 @@
 import { MAP_CENTER, MAP_ZOOM } from './config.js?v=22';
 
 export function initMap() {
-  const map = L.map('map', { center: MAP_CENTER, zoom: MAP_ZOOM, zoomControl: true });
+  const map = L.map('map', {
+    center: MAP_CENTER,
+    zoom: MAP_ZOOM,
+    zoomControl: true,
+    minZoom: 5,
+    maxBounds: [[37, 5], [63, 35]],
+    maxBoundsViscosity: 1.0,
+  });
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
     maxZoom: 19,
