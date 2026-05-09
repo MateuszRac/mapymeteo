@@ -49,11 +49,6 @@
     <!-- Desktop: inline product buttons / Mobile: fixed dropdown panel -->
     <div id="product-btns" class="btn-group"></div>
 
-    <!-- Wyładowania -->
-    <div id="tb-lightning">
-      <button id="btn-lightning" class="active" title="Wyładowania atmosferyczne (MTG-LI)">⚡</button>
-      <button id="btn-lightning-3h" title="Pokaż wyładowania z ostatnich 3 godzin">3h</button>
-    </div>
   </div>
 
   <div id="tb-clock">
@@ -77,6 +72,16 @@
 <!-- ── Side action icons ── -->
 <div id="side-actions">
   <button class="side-btn" data-panel="support" title="Wsparcie projektu">☕</button>
+  <div id="lightning-wrap">
+    <button id="btn-lightning" class="side-lightning-btn active" title="Wyładowania atmosferyczne (MTG-LI)">⚡</button>
+    <div id="lightning-menu" class="hidden">
+      <button class="lgtn-opt" data-mode="off">Wyłączone</button>
+      <button class="lgtn-opt active" data-mode="radar">Bieżące okno</button>
+      <button class="lgtn-opt" data-mode="1h">Ostatnia 1h</button>
+      <button class="lgtn-opt" data-mode="3h">Ostatnie 3h</button>
+      <button class="lgtn-opt" data-mode="6h">Ostatnie 6h</button>
+    </div>
+  </div>
   <button class="side-btn" data-panel="info"    title="O wyświetlanym produkcie">ℹ</button>
   <button class="side-btn" data-panel="settings" title="Ustawienia">⚙</button>
   <button class="side-btn" data-panel="copy"    title="Prawa autorskie">©</button>

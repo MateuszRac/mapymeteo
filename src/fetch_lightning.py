@@ -149,7 +149,7 @@ def _process_zip(zip_path: Path) -> list:
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
-def main(history_hours: int = 3) -> int:
+def main(history_hours: int = 6) -> int:
     MTG_DATA_DIR.mkdir(parents=True, exist_ok=True)
     OUTPUT_JSON.parent.mkdir(parents=True, exist_ok=True)
 

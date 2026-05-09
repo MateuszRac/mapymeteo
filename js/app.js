@@ -33,7 +33,7 @@ const colorbarTicks    = document.getElementById('colorbar-ticks');
 const colorbarLabel    = document.getElementById('colorbar-label');
 const toolbarEl        = document.getElementById('toolbar');
 const btnLightning        = document.getElementById('btn-lightning');
-const btnLightning3h      = document.getElementById('btn-lightning-3h');
+const lightningMenu       = document.getElementById('lightning-menu');
 const lightningWarning    = document.getElementById('lightning-warning');
 const lightningOpacitySl  = document.getElementById('lightning-opacity-slider');
 const lightningOpacityVal = document.getElementById('lightning-opacity-val');
@@ -180,7 +180,14 @@ function markActiveBtn(key) {
 // ── Logika wyboru ─────────────────────────────────────────────────────────────
 function selectFirstAvailable() {
   const first = index.stationIds[0];
-  if (first) selectStation(first, false);
+  if (!first) return;
+  selectStation(first, false);
+  // Default to column-max reflectivity on COMPO if available
+  if (first === 'COMPO') {
+    const items = index.byStation['COMPO']?.items ?? [];
+    const preferred = items.find(i => i.productType === 'CMAX_250' && i.unit === 'DBZH');
+    if (preferred) selectKey(preferred.key);
+  }
 }
 
 function selectStation(id, panMap = true) {
@@ -361,36 +368,31 @@ speedSl?.addEventListener('input', () =>
 
 // ── Przyciski wyładowań ───────────────────────────────────────────────────────
 function initLightningButtons() {
-  // Domyślnie włączone (mode='radar' ustawiony w lightning.js)
-  btnLightning?.classList.add('active');
-  btnLightning3h?.classList.remove('hidden');
-
-  btnLightning?.addEventListener('click', () => {
-    const cur = getLightningMode();
-    if (cur === 'off') {
-      setLightningMode('radar');
-      btnLightning?.classList.add('active');
-      btnLightning3h?.classList.remove('hidden');
-    } else {
-      setLightningMode('off');
-      btnLightning?.classList.remove('active');
-      btnLightning3h?.classList.add('hidden');
-      btnLightning3h?.classList.remove('active');
-      setLightningWarning(false);
-    }
-    const curFrame = player?.currentFrame;
-    const { missing } = renderLightning(curFrame?.timestamp ?? null);
-    setLightningWarning(getLightningMode() !== 'off' && missing);
+  btnLightning?.addEventListener('click', e => {
+    e.stopPropagation();
+    lightningMenu?.classList.toggle('hidden');
   });
 
-  btnLightning3h?.addEventListener('click', () => {
-    const is3h = getLightningMode() === '3h';
-    setLightningMode(is3h ? 'radar' : '3h');
-    btnLightning3h?.classList.toggle('active', !is3h);
-    const curFrame = player?.currentFrame;
-    const { missing } = renderLightning(curFrame?.timestamp ?? null);
-    setLightningWarning(getLightningMode() === 'radar' && missing);
+  lightningMenu?.querySelectorAll('.lgtn-opt').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const mode = btn.dataset.mode;
+      setLightningMode(mode);
+
+      lightningMenu.querySelectorAll('.lgtn-opt').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      btnLightning?.classList.toggle('active', mode !== 'off');
+
+      lightningMenu.classList.add('hidden');
+      if (mode === 'off') { setLightningWarning(false); renderLightning(null); return; }
+
+      const curFrame = player?.currentFrame;
+      const { missing } = renderLightning(curFrame?.timestamp ?? null);
+      setLightningWarning(mode === 'radar' && missing);
+    });
   });
+
+  document.addEventListener('click', () => lightningMenu?.classList.add('hidden'));
 
   lightningOpacitySl?.addEventListener('input', () => {
     const val = parseInt(lightningOpacitySl.value, 10);

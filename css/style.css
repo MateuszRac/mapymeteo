@@ -439,49 +439,77 @@ body {
   transform: scale(1.3);
 }
 
-/* ── Lightning buttons ── */
-#tb-lightning {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin-left: 4px;
-  flex-shrink: 0;
-}
-
-#btn-lightning,
-#btn-lightning-3h {
-  background: rgba(22,31,53,.75);
-  color: var(--text);
+/* ── Lightning side buttons ── */
+.side-lightning-btn {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: rgba(4,7,16,.88);
   border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 0 10px;
+  color: #c8daf5;
   font-size: .82rem;
+  font-weight: 600;
   cursor: pointer;
-  height: 30px;
   display: flex;
   align-items: center;
-  white-space: nowrap;
-  transition: background .12s, border-color .12s, color .12s;
+  justify-content: center;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: color .15s, border-color .15s, background .15s;
+  padding: 0;
+  line-height: 1;
 }
-#btn-lightning:hover,
-#btn-lightning-3h:hover { background: #243050; border-color: #3a5080; }
+#btn-lightning { font-size: 1.4rem; }
+.side-lightning-btn:hover { color: var(--text); border-color: #3a5080; background: rgba(22,31,53,.85); }
+.side-lightning-btn.active {
+  color: #ffe000;
+  border-color: #c8b000;
+  background: rgba(255,224,0,.12);
+}
+/* ── Lightning dropdown menu ── */
+#lightning-wrap {
+  position: relative;
+}
 
-#btn-lightning.active {
-  color: #ffe000;
-  border-color: #c8b000;
-  background: rgba(255,224,0,.1);
+#lightning-menu {
+  position: absolute;
+  right: calc(100% + 8px);
+  top: 50%;
+  transform: translateY(-50%);
+  background: rgba(9,13,24,.97);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 5px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 148px;
+  z-index: 200;
+  box-shadow: 0 4px 20px rgba(0,0,0,.55);
 }
-#btn-lightning-3h.active {
-  color: #ffe000;
-  border-color: #c8b000;
-  background: rgba(255,224,0,.18);
+#lightning-menu.hidden { display: none; }
+
+.lgtn-opt {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: .78rem;
+  padding: 7px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+  transition: background .1s, color .1s;
+  white-space: nowrap;
 }
-#btn-lightning-3h.hidden { display: none; }
+.lgtn-opt:hover { background: rgba(255,255,255,.07); color: var(--text); }
+.lgtn-opt.active { color: #ffe000; font-weight: 600; }
 
 /* ── Lightning warning ── */
 #lightning-warning {
   position: fixed;
-  bottom: 62px;
+  top: 58px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 101;
@@ -619,12 +647,10 @@ body {
   #time-clock { font-size: 1.2rem; }
   #time-date  { font-size: .62rem; }
 
-  /* Side actions – below toolbar */
-  #side-actions {
-    top: calc(52px + 12px);
-    transform: none;
-  }
-  .side-btn { width: 44px; height: 44px; font-size: 1.3rem; }
+  /* Side actions – vertically centered same as desktop */
+  .side-btn { width: 40px; height: 40px; font-size: 1.2rem; }
+  .side-lightning-btn { width: 40px; height: 40px; font-size: .76rem; }
+  #btn-lightning { font-size: 1.2rem; }
 
   /* Side panel – full width below toolbar */
   #side-panel {
@@ -649,8 +675,7 @@ body {
   #colorbar { top: 52px; }
 
   /* Lightning */
-  #btn-lightning, #btn-lightning-3h { font-size: .78rem; height: 28px; padding: 0 8px; }
-  #lightning-warning { font-size: .68rem; bottom: 60px; }
+  #lightning-warning { font-size: .68rem; top: 56px; }
 
   /* Cookie banner */
   #cookie-banner { bottom: 54px; }

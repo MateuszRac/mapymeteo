@@ -8,12 +8,13 @@
  */
 
 const LIGHTNING_URL = './img/polrad/lightning.json';
-const SLOT_MS       = 10 * 60 * 1000;   // 10 minut
-const HISTORY_MS    = 3 * 60 * 60 * 1000;
+const SLOT_MS        = 10 * 60 * 1000;
+const RADAR_WARN_MS  = 3 * 60 * 60 * 1000;  // okno ostrzeżenia w trybie radar
+const HISTORY_WINDOWS = { '1h': 3600000, '3h': 10800000, '6h': 21600000 };
 
 let _data    = null;    // załadowany lightning.json
 let _layer   = null;    // L.LayerGroup
-let _mode    = 'radar'; // 'off' | 'radar' | '3h'
+let _mode    = 'radar'; // 'off' | 'radar' | '1h' | '3h' | '6h'
 let _opacity = 0.80;    // fillOpacity (0–1)
 
 // ── Pomocnicze ────────────────────────────────────────────────────────────────
@@ -97,7 +98,7 @@ export function renderLightning(radarTimestamp) {
   _layer.clearLayers();
 
   if (_mode === 'off' || !_data) return { missing: false };
-  if (_mode === '3h')   return _render3h();
+  if (_mode !== 'radar') return _renderHistory(HISTORY_WINDOWS[_mode] ?? HISTORY_WINDOWS['3h']);
   return _renderRadar(radarTimestamp);
 }
 
@@ -110,7 +111,8 @@ function _renderRadar(radarTimestamp) {
   const sk  = _slotKey(tMs);
   const slot = _data.slots?.[sk];
 
-  const missing = slot != null && !slot.ok;
+  const inWindow = tMs > Date.now() - RADAR_WARN_MS;
+  const missing  = inWindow && !slot?.ok;
 
   if (slot?.ok && slot.groups?.length) {
     for (const g of slot.groups) {
@@ -128,11 +130,11 @@ function _renderRadar(radarTimestamp) {
   return { missing };
 }
 
-function _render3h() {
+function _renderHistory(histMs) {
   if (!_data?.slots) return { missing: false };
 
   const now    = Date.now();
-  const cutoff = now - HISTORY_MS;
+  const cutoff = now - histMs;
 
   for (const slot of Object.values(_data.slots)) {
     if (!slot.ok || !slot.groups) continue;
