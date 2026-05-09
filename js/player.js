@@ -1,4 +1,4 @@
-import { PLAY_MS, MAX_FRAMES } from './config.js?v=21';
+import { PLAY_MS, MAX_FRAMES } from './config.js?v=22';
 
 export function createPlayer({ onFrame, onClear }) {
   let frames   = [];
@@ -109,7 +109,8 @@ export function createPlayer({ onFrame, onClear }) {
     stop,
     play,
     setSpeed,
-    get frameCount() { return frames.length; },
-    get isPlaying()  { return playing; },
+    get frameCount()    { return frames.length; },
+    get isPlaying()     { return playing; },
+    get currentFrame()  { return frames[frameIdx] ?? null; },
   };
 }

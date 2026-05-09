@@ -1,4 +1,4 @@
-import { MANIFEST_URL, CONFIG_URL, PRODUCTS_URL, PALETTES_URL } from './config.js?v=21';
+import { MANIFEST_URL, CONFIG_URL, PRODUCTS_URL, PALETTES_URL } from './config.js?v=22';
 
 export async function loadAll() {
   const [config, manifest, products, palettes] = await Promise.all([

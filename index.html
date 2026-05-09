@@ -13,7 +13,7 @@
     gtag('config', 'G-5Q9M5KP7M1');
   </script>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="./css/style.css?v=20" />
+  <link rel="stylesheet" href="./css/style.css?v=22" />
 </head>
 <body>
 
@@ -48,6 +48,12 @@
 
     <!-- Desktop: inline product buttons / Mobile: fixed dropdown panel -->
     <div id="product-btns" class="btn-group"></div>
+
+    <!-- Wyładowania -->
+    <div id="tb-lightning">
+      <button id="btn-lightning" class="active" title="Wyładowania atmosferyczne (MTG-LI)">⚡</button>
+      <button id="btn-lightning-3h" title="Pokaż wyładowania z ostatnich 3 godzin">3h</button>
+    </div>
   </div>
 
   <div id="tb-clock">
@@ -55,6 +61,9 @@
     <span id="time-date">--.--.----</span>
   </div>
 </header>
+
+<!-- ── Lightning warning ── -->
+<div id="lightning-warning" class="hidden">⚡ Brak danych o wyładowaniach dla tej godziny radarowej</div>
 
 <!-- ── Color bar ── -->
 <div id="colorbar" class="hidden">
@@ -94,6 +103,13 @@
       </div>
     </div>
     <div class="sp-row">
+      <span class="sp-label">Krycie wyładowań</span>
+      <div class="sp-ctrl">
+        <input id="lightning-opacity-slider" type="range" min="10" max="100" value="80" class="sp-slider" />
+        <span class="sp-val" id="lightning-opacity-val">80%</span>
+      </div>
+    </div>
+    <div class="sp-row">
       <span class="sp-label">Prędkość animacji</span>
       <div class="sp-ctrl">
         <span class="sp-icon">🐢</span>
@@ -128,6 +144,6 @@
 </footer>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script type="module" src="./js/app.js?v=21"></script>
+<script type="module" src="./js/app.js?v=22"></script>
 </body>
 </html>

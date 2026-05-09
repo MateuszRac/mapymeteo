@@ -1,10 +1,14 @@
-import { REFRESH_MS, MAP_CENTER, MAP_ZOOM } from './config.js?v=21';
+import { REFRESH_MS, MAP_CENTER, MAP_ZOOM } from './config.js?v=22';
 import {
   loadAll, refreshManifest, buildIndex, parseKey,
   getStationLabel,
-} from './data.js?v=21';
-import { initMap, showFrame, clearOverlay, setOverlayOpacity, addRadarMarkers, setActiveMarker, clearCoverageMask } from './map.js?v=21';
-import { createPlayer } from './player.js?v=21';
+} from './data.js?v=22';
+import { initMap, showFrame, clearOverlay, setOverlayOpacity, addRadarMarkers, setActiveMarker, clearCoverageMask } from './map.js?v=22';
+import { createPlayer } from './player.js?v=22';
+import {
+  initLightningLayer, loadLightning, refreshLightning,
+  getLightningMode, setLightningMode, setLightningOpacity, renderLightning,
+} from './lightning.js?v=22';
 
 const SPEED_STEPS = [2000, 1200, 800, 500, 250];
 
@@ -28,6 +32,11 @@ const colorbarBar      = document.getElementById('colorbar-bar');
 const colorbarTicks    = document.getElementById('colorbar-ticks');
 const colorbarLabel    = document.getElementById('colorbar-label');
 const toolbarEl        = document.getElementById('toolbar');
+const btnLightning        = document.getElementById('btn-lightning');
+const btnLightning3h      = document.getElementById('btn-lightning-3h');
+const lightningWarning    = document.getElementById('lightning-warning');
+const lightningOpacitySl  = document.getElementById('lightning-opacity-slider');
+const lightningOpacityVal = document.getElementById('lightning-opacity-val');
 
 const SP_PAGES = {
   info:     document.getElementById('sp-info'),
@@ -63,16 +72,23 @@ async function init() {
         showFrame(map, frame, parseInt(opacitySl.value, 10) / 100, !isFull);
         updateTimeDisplay(frame.timestamp);
         updateColorbar(frame.quantity ?? (selKey ? parseKey(selKey).unit : null));
+        const { missing } = renderLightning(frame.timestamp);
+        setLightningWarning(missing);
       },
       onClear: () => {
         clearOverlay();
         clearCoverageMask();
         updateTimeDisplay(null);
+        renderLightning(null);
+        setLightningWarning(false);
       },
     });
     addRadarMarkers(map, config.radar_stations || [], id => selectStation(id));
+    initLightningLayer(map);
+    await loadLightning();
     populateStations();
     selectFirstAvailable();
+    initLightningButtons();
     positionColorbar();
     if (window.ResizeObserver) {
       new ResizeObserver(positionColorbar).observe(toolbarEl);
@@ -343,6 +359,52 @@ speedSl?.addEventListener('input', () =>
   player?.setSpeed(SPEED_STEPS[parseInt(speedSl.value, 10) - 1])
 );
 
+// ── Przyciski wyładowań ───────────────────────────────────────────────────────
+function initLightningButtons() {
+  // Domyślnie włączone (mode='radar' ustawiony w lightning.js)
+  btnLightning?.classList.add('active');
+  btnLightning3h?.classList.remove('hidden');
+
+  btnLightning?.addEventListener('click', () => {
+    const cur = getLightningMode();
+    if (cur === 'off') {
+      setLightningMode('radar');
+      btnLightning?.classList.add('active');
+      btnLightning3h?.classList.remove('hidden');
+    } else {
+      setLightningMode('off');
+      btnLightning?.classList.remove('active');
+      btnLightning3h?.classList.add('hidden');
+      btnLightning3h?.classList.remove('active');
+      setLightningWarning(false);
+    }
+    const curFrame = player?.currentFrame;
+    const { missing } = renderLightning(curFrame?.timestamp ?? null);
+    setLightningWarning(getLightningMode() !== 'off' && missing);
+  });
+
+  btnLightning3h?.addEventListener('click', () => {
+    const is3h = getLightningMode() === '3h';
+    setLightningMode(is3h ? 'radar' : '3h');
+    btnLightning3h?.classList.toggle('active', !is3h);
+    const curFrame = player?.currentFrame;
+    const { missing } = renderLightning(curFrame?.timestamp ?? null);
+    setLightningWarning(getLightningMode() === 'radar' && missing);
+  });
+
+  lightningOpacitySl?.addEventListener('input', () => {
+    const val = parseInt(lightningOpacitySl.value, 10);
+    if (lightningOpacityVal) lightningOpacityVal.textContent = val + '%';
+    setLightningOpacity(val / 100);
+    const curFrame = player?.currentFrame;
+    renderLightning(curFrame?.timestamp ?? null);
+  });
+}
+
+function setLightningWarning(show) {
+  lightningWarning?.classList.toggle('hidden', !show);
+}
+
 // ── Auto-odświeżanie ──────────────────────────────────────────────────────────
 setInterval(async () => {
   try {
@@ -358,6 +420,16 @@ setInterval(async () => {
       player?.updateFrames(frames);
     }
   } catch (_) {}
+}, REFRESH_MS);
+
+setInterval(async () => {
+  await refreshLightning();
+  // Jeśli tryb 3h aktywny — przerenderuj z aktualnym timestamp
+  if (getLightningMode() !== 'off') {
+    const curFrame = player?.currentFrame;
+    const { missing } = renderLightning(curFrame?.timestamp ?? null);
+    setLightningWarning(getLightningMode() === 'radar' && missing);
+  }
 }, REFRESH_MS);
 
 // ── Start ─────────────────────────────────────────────────────────────────────

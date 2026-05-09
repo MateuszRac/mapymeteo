@@ -1,4 +1,4 @@
-import { MAP_CENTER, MAP_ZOOM } from './config.js?v=21';
+import { MAP_CENTER, MAP_ZOOM } from './config.js?v=22';
 
 export function initMap() {
   const map = L.map('map', { center: MAP_CENTER, zoom: MAP_ZOOM, zoomControl: true });
