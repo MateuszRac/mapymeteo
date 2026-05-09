@@ -36,10 +36,13 @@ except ImportError:
     from src.log_setup import setup_logging
     from src.transfer.ftp import FtpUploader
 
-PROJECT_PATH    = Path(os.getenv("PROJECT_PATH", str(ROOT)))
-MTG_DATA_DIR    = PROJECT_PATH / "data" / "mtg"
-OUTPUT_JSON     = PROJECT_PATH / "img" / "polrad" / "lightning.json"
-LOG_DIR         = PROJECT_PATH / "logs"
+PROJECT_PATH      = Path(os.getenv("PROJECT_PATH", str(ROOT)))
+MTG_DATA_DIR      = PROJECT_PATH / "data" / "mtg"
+OUTPUT_JSON       = PROJECT_PATH / "img" / "polrad" / "lightning.json"
+LOG_DIR           = PROJECT_PATH / "logs"
+WATCH_POINTS_FILE = ROOT / "config" / "watch_points.json"
+ALERT_STATE_FILE  = PROJECT_PATH / "data" / "alert_state.json"
+ALERT_COOLDOWN_S  = 3600   # min. przerwa między alertami dla tej samej lokalizacji [s]
 
 COLLECTION_ID   = "EO:EUM:DAT:0782"
 LON_MIN, LON_MAX = 10.0, 30.0
@@ -570,6 +573,107 @@ def _compute_forecast(slots: dict, now: datetime) -> dict | None:
     return {"clusters": clusters_out, "valid_until": valid_until}
 
 
+def _point_in_polygon(lat: float, lon: float, polygon: list) -> bool:
+    """Ray-casting — polygon jako lista [lat, lon]."""
+    n = len(polygon)
+    inside = False
+    j = n - 1
+    for i in range(n):
+        yi, xi = polygon[i]
+        yj, xj = polygon[j]
+        if ((yi > lat) != (yj > lat)) and (lon < (xj - xi) * (lat - yi) / (yj - yi) + xi):
+            inside = not inside
+        j = i
+    return inside
+
+
+def _send_telegram(token: str, chat_id: str, text: str) -> None:
+    import urllib.request
+    payload = json.dumps({"chat_id": chat_id, "text": text, "parse_mode": "HTML"}).encode()
+    req = urllib.request.Request(
+        f"https://api.telegram.org/bot{token}/sendMessage",
+        data=payload,
+        headers={"Content-Type": "application/json"},
+    )
+    urllib.request.urlopen(req, timeout=10)
+
+
+def _check_alerts(forecast: dict | None, now: datetime) -> None:
+    """Sprawdza czy monitorowane punkty leżą w prognozowanych poligonach
+    i wysyła alert Telegram (z cooldownem ALERT_COOLDOWN_S)."""
+    token   = os.getenv("TELEGRAM_BOT_TOKEN")
+    chat_id = os.getenv("TELEGRAM_CHAT_ID")
+    if not token or not chat_id:
+        return
+    if not forecast or not forecast.get("clusters"):
+        return
+    if not WATCH_POINTS_FILE.exists():
+        return
+
+    try:
+        watch_points = json.loads(WATCH_POINTS_FILE.read_text(encoding="utf-8"))
+    except Exception as exc:
+        log.warning("Nie można wczytać watch_points.json: %s", exc)
+        return
+
+    state: dict = {}
+    if ALERT_STATE_FILE.exists():
+        try:
+            state = json.loads(ALERT_STATE_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+
+    now_ts   = _to_naive_utc(now).timestamp()
+    modified = False
+
+    for point in watch_points:
+        name = point.get("name", "?")
+        lat  = float(point["lat"])
+        lon  = float(point["lon"])
+
+        for cl in forecast["clusters"]:
+            polygon = cl.get("polygon", [])
+            if not polygon or not _point_in_polygon(lat, lon, polygon):
+                continue
+
+            last_alert = state.get(name, 0)
+            if now_ts - last_alert < ALERT_COOLDOWN_S:
+                log.debug("Alert dla %s w cooldownie (%.0f min)", name,
+                          (ALERT_COOLDOWN_S - (now_ts - last_alert)) / 60)
+                break
+
+            s            = cl.get("stats", {})
+            cluster_type = cl.get("cluster_type", "normal")
+            speed        = cl.get("speed_kmh", 0)
+            direction    = cl.get("direction_compass", "—")
+            valid_until  = forecast.get("valid_until", "—")
+            emoji        = "🔴" if cluster_type == "intense" else "🟠"
+            intensity    = "intensywna" if cluster_type == "intense" else "ogólna"
+
+            msg = (
+                f"{emoji} <b>Ostrzeżenie burzowe</b>\n"
+                f"Lokalizacja <b>{name}</b> może znaleźć się w obszarze burzy!\n"
+                f"\n"
+                f"Typ komórki: {intensity}\n"
+                f"Prędkość: {speed} km/h, kierunek: {direction}\n"
+                f"Gęstość wyładowań: {s.get('density_km2', '—')} /km²/10min\n"
+                f"Maks. gęstość: {s.get('max_density_km2', '—')} /km²/10min\n"
+                f"Prognoza ważna do: {valid_until}"
+            )
+            try:
+                _send_telegram(token, chat_id, msg)
+                state[name] = now_ts
+                modified = True
+                log.info("Alert Telegram → %s (%s)", name, intensity)
+            except Exception as exc:
+                log.warning("Błąd wysyłania Telegram dla %s: %s", name, exc)
+            break   # jeden alert per punkt per run
+
+    if modified:
+        ALERT_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        ALERT_STATE_FILE.write_text(json.dumps(state), encoding="utf-8")
+
+
 def _save(slots: dict, now: datetime) -> None:
     forecast = _compute_forecast(slots, now)
     if forecast:
@@ -585,6 +689,7 @@ def _save(slots: dict, now: datetime) -> None:
     }
     OUTPUT_JSON.write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     log.info("Zapisano: %s (%d slotów)", OUTPUT_JSON, len(slots))
+    _check_alerts(forecast, now)
 
 
 if __name__ == "__main__":
