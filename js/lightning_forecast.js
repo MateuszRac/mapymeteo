@@ -59,14 +59,16 @@ function _buildPopup(cl) {
     ? '<b style="color:#ff2200">⚠ Intensywna komórka burzowa +1h</b>'
     : '<b>Prognoza komórki burzowej +1h</b>';
 
+  const hasEnv = s.cape_jkg != null || s.shear06_ms != null || s.wmaxshear != null;
+  const envTime = s.env_valid_time
+    ? `<tr><td colspan="2" class="fc-env-time">Środowisko GFS: ${s.env_valid_time} UTC</td></tr>` : '';
   const capeRow = s.cape_jkg != null
     ? `<tr><td>CAPE</td><td>${_fmt(s.cape_jkg, 'J/kg')}</td></tr>` : '';
   const shearRow = s.shear06_ms != null
     ? `<tr><td>Shear 0–6 km</td><td>${_fmt(s.shear06_ms, 'm/s', 1)} (${(s.shear06_ms * 1.944).toFixed(0)} kt)</td></tr>` : '';
   const wmsRow = s.wmaxshear != null
     ? `<tr><td>WmaxShear</td><td>${_fmt(s.wmaxshear, 'm²/s²')}</td></tr>` : '';
-  const envSep = (capeRow || shearRow || wmsRow)
-    ? '<tr><td colspan="2" class="fc-sep"></td></tr>' : '';
+  const envSep = hasEnv ? '<tr><td colspan="2" class="fc-sep"></td></tr>' : '';
 
   return `<div class="lgtn-popup">
     ${label}
@@ -80,7 +82,7 @@ function _buildPopup(cl) {
       <tr><td>Gęstość</td><td>${s.density_km2 != null ? s.density_km2 + ' /km²' : '—'}</td></tr>
       <tr><td>Maks. gęstość</td><td>${s.max_density_km2 != null ? s.max_density_km2 + ' /km²' : '—'}</td></tr>
       ${envSep}
-      ${capeRow}${shearRow}${wmsRow}
+      ${envTime}${capeRow}${shearRow}${wmsRow}
     </table>
   </div>`;
 }

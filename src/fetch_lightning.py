@@ -295,8 +295,12 @@ def _polygon_area_km2(hull_km: np.ndarray) -> float:
 
 
 def _max_density_km2(cl_km: np.ndarray, cl_n: np.ndarray,
-                     cell_km: float = 10.0) -> float:
-    """Maksymalna gęstość wyładowań w siatce cell_km × cell_km [/km²]."""
+                     cell_km: float = 5.0, hull_area_km2: float = 0.0) -> float:
+    """Maksymalna gęstość wyładowań w siatce cell_km × cell_km [/km²].
+
+    Mianownik jest ograniczony do hull_area_km2 gdy klaster jest mniejszy niż
+    komórka siatki — gwarantuje to max_density >= density (średnia).
+    """
     if len(cl_km) == 0:
         return 0.0
     lat_min = cl_km[:, 0].min()
@@ -305,7 +309,12 @@ def _max_density_km2(cl_km: np.ndarray, cl_n: np.ndarray,
     for pt, n in zip(cl_km, cl_n):
         key = (int((pt[0] - lat_min) / cell_km), int((pt[1] - lon_min) / cell_km))
         grid[key] = grid.get(key, 0) + int(n)
-    return round(max(grid.values()) / cell_km ** 2, 4) if grid else 0.0
+    if not grid:
+        return 0.0
+    denom = cell_km ** 2
+    if 0 < hull_area_km2 < denom:
+        denom = hull_area_km2
+    return round(max(grid.values()) / denom, 4)
 
 
 def _to_km(pts_deg: np.ndarray) -> np.ndarray:
@@ -540,8 +549,8 @@ def _gfs_motion(
 
 def _gfs_environment(
     sv: dict | None, center_km: np.ndarray, now_dt: datetime
-) -> tuple[float, float, float] | None:
-    """Zwraca (cape_jkg, shear06_ms, wmaxshear_m2s2) z GFS dla centroidu klastra.
+) -> tuple[float, float, float, str] | None:
+    """Zwraca (cape_jkg, shear06_ms, wmaxshear_m2s2, valid_time_str) z GFS.
 
     Wymaga pliku storm_env_*.npz (nowy format z pełnym środowiskiem).
     Zwraca None jeśli dane niedostępne lub poza obszarem/oknem czasowym.
@@ -569,14 +578,15 @@ def _gfs_environment(
     if abs(valid_times[i_time] - now_ts) > 5400:
         return None
 
-    cape_v = float(sv["cape"][i_time, i_lat, i_lon])
+    cape_v  = float(sv["cape"][i_time, i_lat, i_lon])
     shear_v = float(sv["shear"][i_time, i_lat, i_lon])
     wms_v   = float(sv["wmaxshear"][i_time, i_lat, i_lon])
 
     if not all(math.isfinite(x) for x in (cape_v, shear_v, wms_v)):
         return None
 
-    return max(cape_v, 0.0), max(shear_v, 0.0), max(wms_v, 0.0)
+    vt_str = datetime.fromtimestamp(float(valid_times[i_time]), tz=timezone.utc).strftime("%Y-%m-%dT%H:%M")
+    return max(cape_v, 0.0), max(shear_v, 0.0), max(wms_v, 0.0), vt_str
 
 
 def _compute_forecast(slots: dict, now: datetime) -> dict | None:
@@ -673,7 +683,7 @@ def _compute_forecast(slots: dict, now: datetime) -> dict | None:
             area_km2   = round(_polygon_area_km2(hull_cur_km), 1)
 
         density_km2  = round(count_10min / area_km2, 4) if area_km2 > 0 else 0.0
-        max_dens_km2 = _max_density_km2(cl_km_10, cl_n_10)
+        max_dens_km2 = _max_density_km2(cl_km_10, cl_n_10, hull_area_km2=area_km2)
 
         # Środowisko konwekcyjne z GFS (CAPE, shear, WmaxShear) dla centroidu
         env = _gfs_environment(sv, center_km, now_naive)
@@ -717,6 +727,7 @@ def _compute_forecast(slots: dict, now: datetime) -> dict | None:
                 "cape_jkg":        round(env[0]) if env else None,
                 "shear06_ms":      round(env[1], 1) if env else None,
                 "wmaxshear":       round(env[2]) if env else None,
+                "env_valid_time":  env[3] if env else None,
             },
         })
 

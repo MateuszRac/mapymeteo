@@ -630,6 +630,12 @@ body {
   font-size: .70rem;
   font-style: italic;
 }
+.fc-env-time {
+  color: #6a8aaa;
+  font-size: .68rem;
+  font-style: italic;
+  padding-top: 3px;
+}
 
 .leaflet-popup-content-wrapper {
   background: rgba(9,13,24,.96) !important;
