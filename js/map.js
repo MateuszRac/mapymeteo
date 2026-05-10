@@ -2,21 +2,24 @@ import { MAP_CENTER, MAP_ZOOM } from './config.js?v=22';
 
 const TILE_STYLES = {
   dark: {
-    url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    baseUrl:   'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png',
+    labelsUrl: 'https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png',
     attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions">CARTO</a>',
     subdomains: 'abcd',
     maxZoom: 19,
   },
   light: {
-    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-    subdomains: 'abc',
+    baseUrl:   'https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png',
+    labelsUrl: 'https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png',
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions">CARTO</a>',
+    subdomains: 'abcd',
     maxZoom: 19,
   },
 };
 
-let _map       = null;
-let _tileLayer = null;
+let _map         = null;
+let _tileLayer   = null;
+let _labelsLayer = null;
 
 export function initMap() {
   const map = _map = L.map('map', {
@@ -27,23 +30,29 @@ export function initMap() {
     maxBounds: [[37, 5], [63, 35]],
     maxBoundsViscosity: 1.0,
   });
-  _applyTiles(localStorage.getItem('mapymeteo_map_style') || 'light');
 
   map.createPane('coveragePane');
-  map.getPane('coveragePane').style.zIndex  = 300; // między tiles(200) a imageOverlay(400)
+  map.getPane('coveragePane').style.zIndex       = 300; // między tiles(200) a imageOverlay(400)
   map.getPane('coveragePane').style.pointerEvents = 'none';
+
+  // Etykiety (granice państw, nazwy) ponad wszystkimi warstwami danych
+  map.createPane('labelsPane');
+  map.getPane('labelsPane').style.zIndex       = 450; // ponad overlayPane(400)
+  map.getPane('labelsPane').style.pointerEvents = 'none';
+
+  _applyTiles(localStorage.getItem('mapymeteo_map_style') || 'light');
 
   return map;
 }
 
 function _applyTiles(style) {
   const t = TILE_STYLES[style] ?? TILE_STYLES.dark;
-  if (_tileLayer) _tileLayer.remove();
-  _tileLayer = L.tileLayer(t.url, {
-    attribution: t.attribution,
-    subdomains:  t.subdomains,
-    maxZoom:     t.maxZoom,
-  }).addTo(_map);
+  if (_tileLayer)   { _tileLayer.remove();   _tileLayer   = null; }
+  if (_labelsLayer) { _labelsLayer.remove(); _labelsLayer = null; }
+
+  const opts = { attribution: t.attribution, subdomains: t.subdomains, maxZoom: t.maxZoom };
+  _tileLayer   = L.tileLayer(t.baseUrl,   opts).addTo(_map);
+  _labelsLayer = L.tileLayer(t.labelsUrl, { ...opts, pane: 'labelsPane' }).addTo(_map);
 }
 
 export function setMapStyle(style) {

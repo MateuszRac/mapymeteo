@@ -1,150 +1,368 @@
 {
   "products": {
-    "wmaxshear": {
-      "name": "MLCAPE",
-      "runs": {
-        "202605091200": [
-          {
-            "valid_time": "202605091200",
-            "forecast_hour": 0,
-            "image": "202605091200_wmaxshear_202605091200.png"
-          },
-          {
-            "valid_time": "202605091300",
-            "forecast_hour": 1,
-            "image": "202605091200_wmaxshear_202605091300.png"
-          },
-          {
-            "valid_time": "202605091400",
-            "forecast_hour": 2,
-            "image": "202605091200_wmaxshear_202605091400.png"
-          }
-        ]
-      }
-    },
     "conv_precip": {
       "name": "Opad konwekcyjny + wektor burz",
       "runs": {
-        "202605091200": [
-          {
-            "valid_time": "202605091200",
-            "forecast_hour": 0,
-            "image": "202605091200_conv_precip_202605091200.png"
-          },
-          {
-            "valid_time": "202605091300",
-            "forecast_hour": 1,
-            "image": "202605091200_conv_precip_202605091300.png"
-          },
-          {
-            "valid_time": "202605091400",
-            "forecast_hour": 2,
-            "image": "202605091200_conv_precip_202605091400.png"
-          },
-          {
-            "valid_time": "202605091500",
-            "forecast_hour": 3,
-            "image": "202605091200_conv_precip_202605091500.png"
-          },
-          {
-            "valid_time": "202605091600",
-            "forecast_hour": 4,
-            "image": "202605091200_conv_precip_202605091600.png"
-          },
-          {
-            "valid_time": "202605091700",
-            "forecast_hour": 5,
-            "image": "202605091200_conv_precip_202605091700.png"
-          },
-          {
-            "valid_time": "202605091800",
-            "forecast_hour": 6,
-            "image": "202605091200_conv_precip_202605091800.png"
-          },
-          {
-            "valid_time": "202605091900",
-            "forecast_hour": 7,
-            "image": "202605091200_conv_precip_202605091900.png"
-          },
-          {
-            "valid_time": "202605092000",
-            "forecast_hour": 8,
-            "image": "202605091200_conv_precip_202605092000.png"
-          },
-          {
-            "valid_time": "202605092100",
-            "forecast_hour": 9,
-            "image": "202605091200_conv_precip_202605092100.png"
-          },
-          {
-            "valid_time": "202605092200",
-            "forecast_hour": 10,
-            "image": "202605091200_conv_precip_202605092200.png"
-          },
-          {
-            "valid_time": "202605092300",
-            "forecast_hour": 11,
-            "image": "202605091200_conv_precip_202605092300.png"
-          },
+        "202605100000": [
           {
             "valid_time": "202605100000",
-            "forecast_hour": 12,
-            "image": "202605091200_conv_precip_202605100000.png"
+            "forecast_hour": 0,
+            "image": "202605100000_conv_precip_202605100000.png"
           },
           {
             "valid_time": "202605100100",
-            "forecast_hour": 13,
-            "image": "202605091200_conv_precip_202605100100.png"
+            "forecast_hour": 1,
+            "image": "202605100000_conv_precip_202605100100.png"
           },
           {
             "valid_time": "202605100200",
-            "forecast_hour": 14,
-            "image": "202605091200_conv_precip_202605100200.png"
+            "forecast_hour": 2,
+            "image": "202605100000_conv_precip_202605100200.png"
           },
           {
             "valid_time": "202605100300",
-            "forecast_hour": 15,
-            "image": "202605091200_conv_precip_202605100300.png"
+            "forecast_hour": 3,
+            "image": "202605100000_conv_precip_202605100300.png"
           },
           {
             "valid_time": "202605100400",
-            "forecast_hour": 16,
-            "image": "202605091200_conv_precip_202605100400.png"
+            "forecast_hour": 4,
+            "image": "202605100000_conv_precip_202605100400.png"
           },
           {
             "valid_time": "202605100500",
-            "forecast_hour": 17,
-            "image": "202605091200_conv_precip_202605100500.png"
+            "forecast_hour": 5,
+            "image": "202605100000_conv_precip_202605100500.png"
           },
           {
             "valid_time": "202605100600",
-            "forecast_hour": 18,
-            "image": "202605091200_conv_precip_202605100600.png"
+            "forecast_hour": 6,
+            "image": "202605100000_conv_precip_202605100600.png"
           },
           {
             "valid_time": "202605100700",
-            "forecast_hour": 19,
-            "image": "202605091200_conv_precip_202605100700.png"
+            "forecast_hour": 7,
+            "image": "202605100000_conv_precip_202605100700.png"
           },
           {
             "valid_time": "202605100800",
-            "forecast_hour": 20,
-            "image": "202605091200_conv_precip_202605100800.png"
+            "forecast_hour": 8,
+            "image": "202605100000_conv_precip_202605100800.png"
           },
           {
             "valid_time": "202605100900",
-            "forecast_hour": 21,
-            "image": "202605091200_conv_precip_202605100900.png"
+            "forecast_hour": 9,
+            "image": "202605100000_conv_precip_202605100900.png"
           },
           {
             "valid_time": "202605101000",
-            "forecast_hour": 22,
-            "image": "202605091200_conv_precip_202605101000.png"
+            "forecast_hour": 10,
+            "image": "202605100000_conv_precip_202605101000.png"
           },
           {
             "valid_time": "202605101100",
+            "forecast_hour": 11,
+            "image": "202605100000_conv_precip_202605101100.png"
+          },
+          {
+            "valid_time": "202605101200",
+            "forecast_hour": 12,
+            "image": "202605100000_conv_precip_202605101200.png"
+          },
+          {
+            "valid_time": "202605101300",
+            "forecast_hour": 13,
+            "image": "202605100000_conv_precip_202605101300.png"
+          },
+          {
+            "valid_time": "202605101400",
+            "forecast_hour": 14,
+            "image": "202605100000_conv_precip_202605101400.png"
+          },
+          {
+            "valid_time": "202605101500",
+            "forecast_hour": 15,
+            "image": "202605100000_conv_precip_202605101500.png"
+          },
+          {
+            "valid_time": "202605101600",
+            "forecast_hour": 16,
+            "image": "202605100000_conv_precip_202605101600.png"
+          },
+          {
+            "valid_time": "202605101700",
+            "forecast_hour": 17,
+            "image": "202605100000_conv_precip_202605101700.png"
+          },
+          {
+            "valid_time": "202605101800",
+            "forecast_hour": 18,
+            "image": "202605100000_conv_precip_202605101800.png"
+          },
+          {
+            "valid_time": "202605101900",
+            "forecast_hour": 19,
+            "image": "202605100000_conv_precip_202605101900.png"
+          },
+          {
+            "valid_time": "202605102000",
+            "forecast_hour": 20,
+            "image": "202605100000_conv_precip_202605102000.png"
+          },
+          {
+            "valid_time": "202605102100",
+            "forecast_hour": 21,
+            "image": "202605100000_conv_precip_202605102100.png"
+          },
+          {
+            "valid_time": "202605102200",
+            "forecast_hour": 22,
+            "image": "202605100000_conv_precip_202605102200.png"
+          },
+          {
+            "valid_time": "202605102300",
             "forecast_hour": 23,
-            "image": "202605091200_conv_precip_202605101100.png"
+            "image": "202605100000_conv_precip_202605102300.png"
+          },
+          {
+            "valid_time": "202605110000",
+            "forecast_hour": 24,
+            "image": "202605100000_conv_precip_202605110000.png"
+          },
+          {
+            "valid_time": "202605110100",
+            "forecast_hour": 25,
+            "image": "202605100000_conv_precip_202605110100.png"
+          },
+          {
+            "valid_time": "202605110200",
+            "forecast_hour": 26,
+            "image": "202605100000_conv_precip_202605110200.png"
+          },
+          {
+            "valid_time": "202605110300",
+            "forecast_hour": 27,
+            "image": "202605100000_conv_precip_202605110300.png"
+          },
+          {
+            "valid_time": "202605110400",
+            "forecast_hour": 28,
+            "image": "202605100000_conv_precip_202605110400.png"
+          },
+          {
+            "valid_time": "202605110500",
+            "forecast_hour": 29,
+            "image": "202605100000_conv_precip_202605110500.png"
+          },
+          {
+            "valid_time": "202605110600",
+            "forecast_hour": 30,
+            "image": "202605100000_conv_precip_202605110600.png"
+          },
+          {
+            "valid_time": "202605110700",
+            "forecast_hour": 31,
+            "image": "202605100000_conv_precip_202605110700.png"
+          },
+          {
+            "valid_time": "202605110800",
+            "forecast_hour": 32,
+            "image": "202605100000_conv_precip_202605110800.png"
+          },
+          {
+            "valid_time": "202605110900",
+            "forecast_hour": 33,
+            "image": "202605100000_conv_precip_202605110900.png"
+          },
+          {
+            "valid_time": "202605111000",
+            "forecast_hour": 34,
+            "image": "202605100000_conv_precip_202605111000.png"
+          },
+          {
+            "valid_time": "202605111100",
+            "forecast_hour": 35,
+            "image": "202605100000_conv_precip_202605111100.png"
+          },
+          {
+            "valid_time": "202605111200",
+            "forecast_hour": 36,
+            "image": "202605100000_conv_precip_202605111200.png"
+          },
+          {
+            "valid_time": "202605111300",
+            "forecast_hour": 37,
+            "image": "202605100000_conv_precip_202605111300.png"
+          },
+          {
+            "valid_time": "202605111400",
+            "forecast_hour": 38,
+            "image": "202605100000_conv_precip_202605111400.png"
+          },
+          {
+            "valid_time": "202605111500",
+            "forecast_hour": 39,
+            "image": "202605100000_conv_precip_202605111500.png"
+          },
+          {
+            "valid_time": "202605111600",
+            "forecast_hour": 40,
+            "image": "202605100000_conv_precip_202605111600.png"
+          },
+          {
+            "valid_time": "202605111700",
+            "forecast_hour": 41,
+            "image": "202605100000_conv_precip_202605111700.png"
+          },
+          {
+            "valid_time": "202605111800",
+            "forecast_hour": 42,
+            "image": "202605100000_conv_precip_202605111800.png"
+          },
+          {
+            "valid_time": "202605111900",
+            "forecast_hour": 43,
+            "image": "202605100000_conv_precip_202605111900.png"
+          },
+          {
+            "valid_time": "202605112000",
+            "forecast_hour": 44,
+            "image": "202605100000_conv_precip_202605112000.png"
+          },
+          {
+            "valid_time": "202605112100",
+            "forecast_hour": 45,
+            "image": "202605100000_conv_precip_202605112100.png"
+          },
+          {
+            "valid_time": "202605112200",
+            "forecast_hour": 46,
+            "image": "202605100000_conv_precip_202605112200.png"
+          },
+          {
+            "valid_time": "202605112300",
+            "forecast_hour": 47,
+            "image": "202605100000_conv_precip_202605112300.png"
+          },
+          {
+            "valid_time": "202605120000",
+            "forecast_hour": 48,
+            "image": "202605100000_conv_precip_202605120000.png"
+          },
+          {
+            "valid_time": "202605120100",
+            "forecast_hour": 49,
+            "image": "202605100000_conv_precip_202605120100.png"
+          },
+          {
+            "valid_time": "202605120200",
+            "forecast_hour": 50,
+            "image": "202605100000_conv_precip_202605120200.png"
+          },
+          {
+            "valid_time": "202605120300",
+            "forecast_hour": 51,
+            "image": "202605100000_conv_precip_202605120300.png"
+          },
+          {
+            "valid_time": "202605120400",
+            "forecast_hour": 52,
+            "image": "202605100000_conv_precip_202605120400.png"
+          },
+          {
+            "valid_time": "202605120500",
+            "forecast_hour": 53,
+            "image": "202605100000_conv_precip_202605120500.png"
+          },
+          {
+            "valid_time": "202605120600",
+            "forecast_hour": 54,
+            "image": "202605100000_conv_precip_202605120600.png"
+          },
+          {
+            "valid_time": "202605120700",
+            "forecast_hour": 55,
+            "image": "202605100000_conv_precip_202605120700.png"
+          },
+          {
+            "valid_time": "202605120800",
+            "forecast_hour": 56,
+            "image": "202605100000_conv_precip_202605120800.png"
+          },
+          {
+            "valid_time": "202605120900",
+            "forecast_hour": 57,
+            "image": "202605100000_conv_precip_202605120900.png"
+          },
+          {
+            "valid_time": "202605121000",
+            "forecast_hour": 58,
+            "image": "202605100000_conv_precip_202605121000.png"
+          },
+          {
+            "valid_time": "202605121100",
+            "forecast_hour": 59,
+            "image": "202605100000_conv_precip_202605121100.png"
+          },
+          {
+            "valid_time": "202605121200",
+            "forecast_hour": 60,
+            "image": "202605100000_conv_precip_202605121200.png"
+          },
+          {
+            "valid_time": "202605121300",
+            "forecast_hour": 61,
+            "image": "202605100000_conv_precip_202605121300.png"
+          },
+          {
+            "valid_time": "202605121400",
+            "forecast_hour": 62,
+            "image": "202605100000_conv_precip_202605121400.png"
+          },
+          {
+            "valid_time": "202605121500",
+            "forecast_hour": 63,
+            "image": "202605100000_conv_precip_202605121500.png"
+          },
+          {
+            "valid_time": "202605121600",
+            "forecast_hour": 64,
+            "image": "202605100000_conv_precip_202605121600.png"
+          },
+          {
+            "valid_time": "202605121700",
+            "forecast_hour": 65,
+            "image": "202605100000_conv_precip_202605121700.png"
+          },
+          {
+            "valid_time": "202605121800",
+            "forecast_hour": 66,
+            "image": "202605100000_conv_precip_202605121800.png"
+          },
+          {
+            "valid_time": "202605121900",
+            "forecast_hour": 67,
+            "image": "202605100000_conv_precip_202605121900.png"
+          },
+          {
+            "valid_time": "202605122000",
+            "forecast_hour": 68,
+            "image": "202605100000_conv_precip_202605122000.png"
+          },
+          {
+            "valid_time": "202605122100",
+            "forecast_hour": 69,
+            "image": "202605100000_conv_precip_202605122100.png"
+          },
+          {
+            "valid_time": "202605122200",
+            "forecast_hour": 70,
+            "image": "202605100000_conv_precip_202605122200.png"
+          },
+          {
+            "valid_time": "202605122300",
+            "forecast_hour": 71,
+            "image": "202605100000_conv_precip_202605122300.png"
           }
         ]
       }

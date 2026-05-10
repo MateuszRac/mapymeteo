@@ -59,14 +59,14 @@ _KM_PER_LON   = 111.32 * math.cos(math.radians(_CENTER_LAT))  # ≈ 68.5 km/°
 FORECAST_RECENT_MIN      = 20    # okno aktualnego obszaru [min]
 FORECAST_MOTION_H        = 2     # okno estymacji prędkości [h]
 FORECAST_AHEAD_H         = 1     # horyzont prognozy [h]
-FORECAST_EPS_KM          = 50    # promień klastrowania DBSCAN [km]
+FORECAST_EPS_KM          = 25    # promień klastrowania DBSCAN [km]
 FORECAST_SEARCH_KM       = 60    # promień szukania historii dla klastra [km]
 FORECAST_BUFFER_KM       = 5     # bazowy bufor wokół bieżącego polygonu [km]
 FORECAST_SPREAD_KM_PER_H = 1.0   # przyrost buforu końcowego z czasem [km/h]
 FORECAST_SPREAD_FRACTION = 0.05  # przyrost buforu końcowego z odległością [udział dystansu]
 FORECAST_MAX_KMH         = 100   # maks. prędkość komórki [km/h]
 FORECAST_MIN_SAMPLES     = 2     # min punktów w klastrze DBSCAN
-FORECAST_MIN_CLUSTER     = 3     # min punktów klastra do rysowania polygonu
+FORECAST_MIN_CLUSTER     = 5     # min punktów klastra do rysowania polygonu
 FORECAST_INTENSE_DENS    = 10.0  # próg gęstości dla klastra intensywnego [/km²/10min]
 
 log = logging.getLogger("fetch_lightning")

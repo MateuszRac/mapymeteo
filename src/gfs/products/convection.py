@@ -86,7 +86,7 @@ class ConvectivePrecipProduct(GfsProduct):
         reader = GribReader(file_path)
 
         # Accumulated convective precip [kg/m² == mm]
-        acpcp = reader.get_parameter("prate", "surface", 0, step_type="instant")
+        acpcp = reader.get_parameter("prate", "surface", 0, step_type="instant")*60*60
 
         # Storm motion vectors — GFS stores these at the 0–6000 m layer
         # typeOfLevel='heightAboveGroundLayer', level=6000 (top of layer in cfgrib)
@@ -101,7 +101,7 @@ class ConvectivePrecipProduct(GfsProduct):
 
         cs = self.builder.add_shading(
             ax, acpcp,
-            vmin=0.5, vmax=50, step=2.5,
+            vmin=0.5, vmax=100, step=2.5,
             cmap="YlGn", vmin_transp=0,
         )
         self.builder.add_colorbar(ax, cs, "Opad konwekcyjny skum. [mm]")
