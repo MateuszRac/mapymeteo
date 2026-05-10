@@ -298,23 +298,30 @@ def _max_density_km2(cl_km: np.ndarray, cl_n: np.ndarray,
                      cell_km: float = 5.0, hull_area_km2: float = 0.0) -> float:
     """Maksymalna gęstość wyładowań w siatce cell_km × cell_km [/km²].
 
-    Mianownik jest ograniczony do hull_area_km2 gdy klaster jest mniejszy niż
-    komórka siatki — gwarantuje to max_density >= density (średnia).
+    Wyrównanie siatki może rozbić skupisko na kilka komórek, zaniżając wynik.
+    Średnia gęstość klastra służy jako dolna granica (max >= avg z definicji).
     """
     if len(cl_km) == 0:
         return 0.0
+    total = int(cl_n.sum())
+    if total == 0:
+        return 0.0
+
+    cell_area = cell_km ** 2
     lat_min = cl_km[:, 0].min()
     lon_min = cl_km[:, 1].min()
     grid: dict[tuple, int] = {}
     for pt, n in zip(cl_km, cl_n):
         key = (int((pt[0] - lat_min) / cell_km), int((pt[1] - lon_min) / cell_km))
         grid[key] = grid.get(key, 0) + int(n)
-    if not grid:
-        return 0.0
-    denom = cell_km ** 2
-    if 0 < hull_area_km2 < denom:
-        denom = hull_area_km2
-    return round(max(grid.values()) / denom, 4)
+
+    max_dens = max(grid.values()) / cell_area if grid else 0.0
+
+    # Podłoga: max musi być >= średniej (z definicji najgęstszy obszar >= średniej)
+    if hull_area_km2 > 0:
+        max_dens = max(max_dens, total / hull_area_km2)
+
+    return round(max_dens, 4)
 
 
 def _to_km(pts_deg: np.ndarray) -> np.ndarray:
