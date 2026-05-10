@@ -625,6 +625,11 @@ body {
   padding: 3px 0 2px;
   border-top: 1px solid #2d4470;
 }
+.fc-source {
+  color: #6a8aaa !important;
+  font-size: .70rem;
+  font-style: italic;
+}
 
 .leaflet-popup-content-wrapper {
   background: rgba(9,13,24,.96) !important;

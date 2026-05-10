@@ -44,30 +44,43 @@ export function updateForecast(data) {
   }
 }
 
+function _fmt(v, unit, decimals = 0) {
+  return v != null ? `${v.toFixed(decimals)} ${unit}` : '—';
+}
+
 function _buildPopup(cl) {
   const s   = cl.stats ?? {};
-  const spd = cl.speed_kmh > 0
-    ? `${cl.speed_kmh} km/h`
-    : 'brak danych';
-  const dir = cl.speed_kmh > 0
-    ? `${cl.direction_deg}° (${cl.direction_compass})`
-    : '—';
+  const spd = cl.speed_kmh > 0 ? `${cl.speed_kmh} km/h` : 'brak danych';
+  const dir = cl.speed_kmh > 0 ? `${cl.direction_deg}° (${cl.direction_compass})` : '—';
+  const motionLabel = cl.motion_label ?? (cl.motion_source === 'gfs' ? 'GFS' : 'historia wyładowań');
 
   const intense = cl.cluster_type === 'intense';
   const label   = intense
     ? '<b style="color:#ff2200">⚠ Intensywna komórka burzowa +1h</b>'
     : '<b>Prognoza komórki burzowej +1h</b>';
 
+  const capeRow = s.cape_jkg != null
+    ? `<tr><td>CAPE</td><td>${_fmt(s.cape_jkg, 'J/kg')}</td></tr>` : '';
+  const shearRow = s.shear06_ms != null
+    ? `<tr><td>Shear 0–6 km</td><td>${_fmt(s.shear06_ms, 'm/s', 1)} (${(s.shear06_ms * 1.944).toFixed(0)} kt)</td></tr>` : '';
+  const wmsRow = s.wmaxshear != null
+    ? `<tr><td>WmaxShear</td><td>${_fmt(s.wmaxshear, 'm²/s²')}</td></tr>` : '';
+  const envSep = (capeRow || shearRow || wmsRow)
+    ? '<tr><td colspan="2" class="fc-sep"></td></tr>' : '';
+
   return `<div class="lgtn-popup">
     ${label}
     <table>
       <tr><td>Prędkość</td><td>${spd}</td></tr>
       <tr><td>Kierunek</td><td>${dir}</td></tr>
+      <tr><td>Wektor ruchu</td><td class="fc-source">${motionLabel}</td></tr>
       <tr><td colspan="2" class="fc-sep"></td></tr>
       <tr><td>Wyładowania (10 min)</td><td>${s.count_10min ?? '—'}</td></tr>
       <tr><td>Pole klastra</td><td>${s.area_km2 != null ? s.area_km2 + ' km²' : '—'}</td></tr>
       <tr><td>Gęstość</td><td>${s.density_km2 != null ? s.density_km2 + ' /km²' : '—'}</td></tr>
       <tr><td>Maks. gęstość</td><td>${s.max_density_km2 != null ? s.max_density_km2 + ' /km²' : '—'}</td></tr>
+      ${envSep}
+      ${capeRow}${shearRow}${wmsRow}
     </table>
   </div>`;
 }

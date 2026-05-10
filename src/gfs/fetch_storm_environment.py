@@ -20,7 +20,7 @@ import argparse
 import logging
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
@@ -107,7 +107,6 @@ def _extract_grib(fp: Path, orog_cache: list) -> tuple | None:
     # Shear 0-6 km — identical formula to convection.py _wmaxshear
     h6km  = sfc_hgt + 10 + 6000
     denom = p450_hgt.values - p500_hgt.values
-    # Guard against division by zero (should not occur with real GFS data)
     denom = np.where(np.abs(denom) < 1e-3, 1e-3, denom)
     frac  = (h6km - p500_hgt.values) / denom
     u6km  = p500_u.values + frac * (p450_u.values - p500_u.values)
@@ -119,7 +118,7 @@ def _extract_grib(fp: Path, orog_cache: list) -> tuple | None:
 
     lats = ustm.coords["latitude"].values.astype(np.float32)
     lons = ustm.coords["longitude"].values.astype(np.float32)
-    vt   = pd.Timestamp(ustm.coords["valid_time"].values).timestamp()
+    vt   = float(pd.Timestamp(ustm.coords["valid_time"].values).value) / 1e9
 
     return (lats, lons, vt,
             ustm.values.astype(np.float32),
@@ -143,7 +142,7 @@ def fetch_and_save(n_files: int = 25, keep: int = 3) -> Path | None:
 
     cycle_date = run_df.iloc[0]["cycle_date"]
     run_hour   = run_df.iloc[0]["run_hour"]
-    init_dt    = datetime.strptime(f"{cycle_date}{run_hour}", "%Y%m%d%H")
+    init_dt    = datetime.strptime(f"{cycle_date}{run_hour}", "%Y%m%d%H").replace(tzinfo=timezone.utc)
     log.info("Przebieg GFS: %s %sZ (%d kroków)", cycle_date, run_hour, len(run_df))
 
     tag      = init_dt.strftime("%Y%m%d%H") + "z"
