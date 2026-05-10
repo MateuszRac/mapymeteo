@@ -296,28 +296,28 @@ def _polygon_area_km2(hull_km: np.ndarray) -> float:
 
 def _max_density_km2(cl_km: np.ndarray, cl_n: np.ndarray,
                      cell_km: float = 5.0, hull_area_km2: float = 0.0) -> float:
-    """Maksymalna gęstość wyładowań w siatce cell_km × cell_km [/km²].
+    """Maksymalna gęstość wyładowań w siatce cell_km × cell_km.
 
-    Wyrównanie siatki może rozbić skupisko na kilka komórek, zaniżając wynik.
-    Średnia gęstość klastra służy jako dolna granica (max >= avg z definicji).
+    cl_n może być float (przeskalowane do 10-min tempa).
+    Wyrównanie siatki może rozbić skupisko — podłoga ze średniej gwarantuje max >= avg.
     """
     if len(cl_km) == 0:
         return 0.0
-    total = int(cl_n.sum())
-    if total == 0:
+    total = float(np.sum(cl_n))
+    if total <= 0:
         return 0.0
 
     cell_area = cell_km ** 2
-    lat_min = cl_km[:, 0].min()
-    lon_min = cl_km[:, 1].min()
-    grid: dict[tuple, int] = {}
+    lat_min = float(cl_km[:, 0].min())
+    lon_min = float(cl_km[:, 1].min())
+    grid: dict[tuple, float] = {}
     for pt, n in zip(cl_km, cl_n):
         key = (int((pt[0] - lat_min) / cell_km), int((pt[1] - lon_min) / cell_km))
-        grid[key] = grid.get(key, 0) + int(n)
+        grid[key] = grid.get(key, 0.0) + float(n)
 
     max_dens = max(grid.values()) / cell_area if grid else 0.0
 
-    # Podłoga: max musi być >= średniej (z definicji najgęstszy obszar >= średniej)
+    # Podłoga: max musi być >= średniej (najgęstszy obszar >= średniej z definicji)
     if hull_area_km2 > 0:
         max_dens = max(max_dens, total / hull_area_km2)
 
@@ -674,23 +674,33 @@ def _compute_forecast(slots: dict, now: datetime) -> dict | None:
         dir_deg     = round(math.degrees(math.atan2(dx_km, dy_km)) % 360)
         dir_compass = _compass(dir_deg)
 
-        # Otoczka pełnego klastra (20 min) — używana do polygonu prognozy
+        # Otoczka pełnego klastra (okno FORECAST_RECENT_MIN) — do polygonu prognozy
         hull_cur_km = _convex_hull_km(cl_km)
 
-        # Statystyki z ostatnich 10 min — obszar liczony z punktów 10-minutowych
-        m10         = cl_t >= t10_cut
-        cl_km_10    = cl_km[m10]
-        cl_n_10     = cl_n[m10]
-        count_10min = int(cl_n_10.sum()) if m10.any() else 0
+        # Statystyki: ten sam zakres czasu dla obszaru i liczby uderzeń,
+        # wynik przeliczany na tempo /10 min.
+        m10      = cl_t >= t10_cut
+        cl_km_10 = cl_km[m10]
+        cl_n_10  = cl_n[m10]
 
         if len(cl_km_10) >= 3:
-            hull_10_km = _convex_hull_km(cl_km_10)
-            area_km2   = round(_polygon_area_km2(hull_10_km), 1)
+            # Wystarczająco dużo punktów w ostatnich 10 min
+            hull_stat_km = _convex_hull_km(cl_km_10)
+            area_km2     = round(_polygon_area_km2(hull_stat_km), 1)
+            cl_km_stat   = cl_km_10
+            cl_n_stat    = cl_n_10.astype(float)
+            scale        = 1.0
         else:
+            # Za mało punktów 10-min — bierz pełne okno i skaluj do 10 min
             area_km2   = round(_polygon_area_km2(hull_cur_km), 1)
+            cl_km_stat = cl_km
+            span_s     = float(cl_t.max() - cl_t.min()) if len(cl_t) > 1 else 600.0
+            scale      = 10.0 / max(span_s / 60.0, 1.0)
+            cl_n_stat  = cl_n.astype(float) * scale
 
+        count_10min  = round(float(np.sum(cl_n_stat)))
         density_km2  = round(count_10min / area_km2, 4) if area_km2 > 0 else 0.0
-        max_dens_km2 = _max_density_km2(cl_km_10, cl_n_10, hull_area_km2=area_km2)
+        max_dens_km2 = _max_density_km2(cl_km_stat, cl_n_stat, hull_area_km2=area_km2)
 
         # Środowisko konwekcyjne z GFS (CAPE, shear, WmaxShear) dla centroidu
         env = _gfs_environment(sv, center_km, now_naive)
