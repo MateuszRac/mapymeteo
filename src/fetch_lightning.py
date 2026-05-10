@@ -72,6 +72,11 @@ FORECAST_MIN_SAMPLES     = 2     # min punktów w klastrze DBSCAN
 FORECAST_MIN_CLUSTER     = 5     # min punktów klastra do rysowania polygonu
 FORECAST_INTENSE_DENS    = 10.0  # próg gęstości dla klastra intensywnego [/km²/10min]
 
+# Progi wiarygodności historii centroidu (jeśli spełnione → historia > GFS)
+HIST_MIN_BINS    = 3    # minimalna liczba binów w łańcuchu
+HIST_MIN_SPAN_MIN = 15.0 # minimalna rozpiętość czasu [min]
+HIST_MIN_R2      = 0.70  # minimalny R² ważony regresji liniowej
+
 log = logging.getLogger("fetch_lightning")
 
 
@@ -464,17 +469,15 @@ def _buffer_hull_km(hull_km: np.ndarray, buffer_km: float) -> np.ndarray:
 
 def _estimate_velocity(
     bins_by_t: dict, center_km: np.ndarray
-) -> tuple[float, float, float]:
+) -> tuple[float, float, float, bool]:
     """Regresja centroidów historycznych punktów śledząc klaster wstecz slot po slot.
 
-    Zaczyna od aktualnego centroidu (center_km) i dla każdego binu historycznego
-    szuka punktów blisko POPRZEDNIO znalezionego centroidu — nie stałego centrum.
-    Dzięki temu poprawnie śledzi burze, które przesunęły się o >FORECAST_SEARCH_KM.
-
-    Zwraca (dlat_deg, dlon_deg, speed_kmh) — przemieszczenie za FORECAST_AHEAD_H h.
+    Zwraca (dlat_deg, dlon_deg, speed_kmh, is_reliable).
+    is_reliable=True gdy łańcuch jest wystarczająco długi, rozległy czasowo
+    i liniowy (R² ważony ≥ HIST_MIN_R2).
     """
     if not bins_by_t:
-        return 0.0, 0.0, 0.0
+        return 0.0, 0.0, 0, False
 
     sorted_bins = sorted(bins_by_t.items(), key=lambda x: x[0], reverse=True)
 
@@ -492,22 +495,20 @@ def _estimate_velocity(
         w        = n_vals[near]
         centroid = (pts_km[near] * w[:, None]).sum(axis=0) / w.sum()
         chain.append((bk, centroid))
-        search_pos = centroid   # kolejny krok szuka blisko tego centroidu
+        search_pos = centroid
 
     if len(chain) < 2:
-        return 0.0, 0.0, 0.0
+        return 0.0, 0.0, 0, False
 
     chain.sort(key=lambda c: c[0])
     nc      = len(chain)
-    weights = np.arange(1, nc + 1, dtype=float)   # nowsze sloty → wyższa waga
+    weights = np.arange(1, nc + 1, dtype=float)
     times   = np.array([c[0]    for c in chain])
     ys      = np.array([c[1][0] for c in chain])   # lat [km]
     xs      = np.array([c[1][1] for c in chain])   # lon [km]
 
-    # Normalizuj czas od zera — Unix timestamps (~1.7e9) powodują
-    # katastrofalne skrócenie w lstsq i dają slope ≈ 0.
-    t0     = times[0]
-    tn     = times - t0   # sekundy od najstarszego binu [0 … ~10800]
+    t0 = times[0]
+    tn = times - t0   # sekundy od najstarszego binu
 
     T  = np.column_stack([tn, np.ones(nc)])
     Tw = T * weights[:, None]
@@ -515,9 +516,26 @@ def _estimate_velocity(
         cy, *_ = np.linalg.lstsq(Tw, ys * weights, rcond=None)
         cx, *_ = np.linalg.lstsq(Tw, xs * weights, rcond=None)
     except np.linalg.LinAlgError:
-        return 0.0, 0.0, 0.0
+        return 0.0, 0.0, 0, False
 
-    vel_y_kmh = float(cy[0]) * 3600.0   # km/s → km/h
+    # Ważony R² — jak dobrze liniowy model opisuje ruch centroidu
+    y_pred = T @ cy
+    x_pred = T @ cx
+    w_sum  = weights.sum()
+    ys_wm  = np.dot(weights, ys) / w_sum
+    xs_wm  = np.dot(weights, xs) / w_sum
+    ss_y   = np.dot(weights, (ys - ys_wm) ** 2)
+    ss_x   = np.dot(weights, (xs - xs_wm) ** 2)
+    r2_lat = 1.0 - np.dot(weights, (ys - y_pred)**2) / ss_y if ss_y > 1e-6 else 1.0
+    r2_lon = 1.0 - np.dot(weights, (xs - x_pred)**2) / ss_x if ss_x > 1e-6 else 1.0
+    r2     = min(r2_lat, r2_lon)
+
+    span_min   = float(tn[-1]) / 60.0
+    is_reliable = (nc >= HIST_MIN_BINS
+                   and span_min >= HIST_MIN_SPAN_MIN
+                   and r2 >= HIST_MIN_R2)
+
+    vel_y_kmh = float(cy[0]) * 3600.0
     vel_x_kmh = float(cx[0]) * 3600.0
     speed_kmh = math.sqrt(vel_y_kmh ** 2 + vel_x_kmh ** 2)
 
@@ -529,7 +547,7 @@ def _estimate_velocity(
 
     dlat = vel_y_kmh * FORECAST_AHEAD_H / _KM_PER_LAT
     dlon = vel_x_kmh * FORECAST_AHEAD_H / _KM_PER_LON
-    return dlat, dlon, round(speed_kmh)
+    return dlat, dlon, round(speed_kmh), is_reliable
 
 
 _SV_MAX_AGE_H = 12   # odrzuć dane GFS starsze niż tyle godzin
@@ -721,17 +739,24 @@ def _compute_forecast(slots: dict, now: datetime) -> dict | None:
         center_km  = cl_km.mean(axis=0)
         center_deg = cl_deg.mean(axis=0)
 
-        gfs = _gfs_motion(sv, center_km, now_naive)
-        if gfs is not None:
-            dlat, dlon, speed_kmh = gfs
-            motion_source = "gfs"
-            gfs_run = datetime.fromtimestamp(float(sv["init_time"][0]), tz=timezone.utc)
-            motion_label = f"GFS {gfs_run.strftime('%Y%m%d %HZ')}"
-            log.debug("Klaster %d: GFS %.1f km/h (%s)", cid, speed_kmh, motion_label)
-        else:
-            dlat, dlon, speed_kmh = _estimate_velocity(bins_by_t, center_km)
+        dlat, dlon, speed_kmh, hist_ok = _estimate_velocity(bins_by_t, center_km)
+
+        if hist_ok:
             motion_source = "lightning"
-            motion_label  = "estymacja z historii wyładowań"
+            motion_label  = "historia wyładowań"
+            log.debug("Klaster %d: historia %.1f km/h", cid, speed_kmh)
+        else:
+            gfs = _gfs_motion(sv, center_km, now_naive)
+            if gfs is not None:
+                dlat, dlon, speed_kmh = gfs
+                motion_source = "gfs"
+                gfs_run = datetime.fromtimestamp(float(sv["init_time"][0]), tz=timezone.utc)
+                motion_label = f"GFS {gfs_run.strftime('%Y%m%d %HZ')}"
+                log.debug("Klaster %d: GFS %.1f km/h (historia niewystarczająca)", cid, speed_kmh)
+            else:
+                motion_source = "lightning"
+                motion_label  = "estymacja z historii wyładowań (niepewna)"
+                log.debug("Klaster %d: historia niepewna, brak GFS — %.1f km/h", cid, speed_kmh)
 
         # Kierunek ruchu (0° = N, zgodnie z ruchem wskazówek zegara)
         dy_km       = dlat * _KM_PER_LAT
