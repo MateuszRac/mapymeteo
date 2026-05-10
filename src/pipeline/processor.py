@@ -175,34 +175,57 @@ class RadarPipeline:
         log.info("[%s] Gotowe: +%d nowych overlayow.", key_prefix, total)
         return total
 
+    # Liczba klatek CMAX przechowywanych w cache (dla optical flow)
+    _CMAX_STACK_FRAMES = 5
+
     def _save_cmax_cache(self, radar_data: dict, product_key: str) -> None:
-        """Zapisuje siatkę CMAX [dBZ] jako NPZ do odczytu przez fetch_lightning.py."""
+        """Zapisuje rolling stack N klatek CMAX [dBZ] jako NPZ.
+
+        Stack jest używany przez fetch_lightning.py do optical flow i max-dBZ.
+        """
         try:
             from pyproj import Transformer
 
             cache_dir = self._project_path / "data" / "cmax"
             cache_dir.mkdir(parents=True, exist_ok=True)
+            cache_path = cache_dir / "cmax_latest.npz"
 
-            # Konwersja EPSG:3857 → EPSG:4326 (lon/lat w stopniach)
             t = Transformer.from_crs("EPSG:3857", "EPSG:4326", always_xy=True)
             lon_mesh, lat_mesh = t.transform(radar_data["lon_mesh"], radar_data["lat_mesh"])
-
-            # Środki pikseli z narożników siatki (mesh jest o 1 większy od danych)
             lat_c = ((lat_mesh[:-1, :-1] + lat_mesh[1:, 1:]) / 2).astype(np.float32)
             lon_c = ((lon_mesh[:-1, :-1] + lon_mesh[1:, 1:]) / 2).astype(np.float32)
 
             ds_name = next(iter(radar_data["radar_data"]))
-            dbz = radar_data["radar_data"][ds_name].astype(np.float32)
+            dbz_new = radar_data["radar_data"][ds_name].astype(np.float32)
+            ts_new  = radar_data["start_date"].replace(tzinfo=timezone.utc).timestamp()
 
-            ts = radar_data["start_date"].replace(tzinfo=timezone.utc).timestamp()
+            # Załaduj istniejący stack jeśli siatka pasuje
+            dbz_list: list[np.ndarray] = []
+            ts_list:  list[float]      = []
+            if cache_path.exists():
+                try:
+                    old = np.load(cache_path)
+                    if old["lats"].shape == lat_c.shape:
+                        dbz_list = list(old["dbz"])
+                        ts_list  = [float(x) for x in old["timestamps"]]
+                except Exception:
+                    pass
+
+            # Dodaj nową klatkę, zachowaj ostatnie N
+            dbz_list.append(dbz_new)
+            ts_list.append(ts_new)
+            dbz_list = dbz_list[-self._CMAX_STACK_FRAMES:]
+            ts_list  = ts_list [-self._CMAX_STACK_FRAMES:]
 
             np.savez_compressed(
-                cache_dir / "cmax_latest.npz",
-                lats=lat_c, lons=lon_c, dbz=dbz,
-                timestamp=np.array([ts], dtype=np.float64),
+                cache_path,
+                lats=lat_c, lons=lon_c,
+                dbz=np.array(dbz_list, dtype=np.float32),
+                timestamps=np.array(ts_list, dtype=np.float64),
             )
-            log.info("[%s] Cache CMAX zapisany (siatka %dx%d)", product_key,
-                     dbz.shape[0], dbz.shape[1])
+            log.info("[%s] Cache CMAX: %d/%d klatek (%dx%d)", product_key,
+                     len(dbz_list), self._CMAX_STACK_FRAMES,
+                     dbz_new.shape[0], dbz_new.shape[1])
         except Exception as exc:
             log.warning("[%s] Nie udało się zapisać cache CMAX: %s", product_key, exc)
 

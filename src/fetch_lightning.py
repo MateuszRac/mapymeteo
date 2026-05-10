@@ -45,6 +45,12 @@ ALERT_STATE_FILE  = PROJECT_PATH / "data" / "alert_state.json"
 STORM_VECTORS_DIR = PROJECT_PATH / "data" / "storm_vectors"
 _CMAX_CACHE_PATH  = PROJECT_PATH / "data" / "cmax" / "cmax_latest.npz"
 _CMAX_MAX_AGE_S   = 20 * 60   # ignoruj cache starszy niż 20 min
+
+# Optical flow
+_FLOW_TARGET_KM   = 1.0    # docelowa rozdzielczość po próbkowaniu [km/px]
+_FLOW_SIGMA_KM    = 30.0   # Gaussowski promień wypełnienia pola [km]
+_FLOW_ECHO_THR    = 10.0   # min dBZ uznawany za echo [dBZ]
+_FLOW_MAX_ECHO_KM = 50.0   # maks. odległość klastra od echa, powyżej której OF jest odrzucany [km]
 ALERT_COOLDOWN_S  = 3600   # min. przerwa między alertami dla tej samej lokalizacji [s]
 
 COLLECTION_ID   = "EO:EUM:DAT:0782"
@@ -302,13 +308,18 @@ def _polygon_area_km2(hull_km: np.ndarray) -> float:
 
 
 def _load_cmax() -> dict | None:
-    """Ładuje siatkę CMAX z NPZ-cache. Zwraca None gdy brak pliku lub cache za stary."""
+    """Ładuje stack klatek CMAX z NPZ-cache.
+
+    Zwraca None gdy brak pliku lub najnowsza klatka jest za stara.
+    """
     if not _CMAX_CACHE_PATH.exists():
         return None
     try:
         import time
         c = np.load(_CMAX_CACHE_PATH)
-        if time.time() - float(c["timestamp"][0]) > _CMAX_MAX_AGE_S:
+        # Obsługuje nowy format (timestamps) i stary (timestamp)
+        ts_arr = c["timestamps"] if "timestamps" in c else c["timestamp"]
+        if time.time() - float(ts_arr[-1]) > _CMAX_MAX_AGE_S:
             return None
         return c
     except Exception:
@@ -336,7 +347,9 @@ def _max_dbz_in_polygon(cmax: dict, poly_deg: np.ndarray) -> float | None:
     """Zwraca max dBZ CMAX wewnątrz polygonu [lat, lon] lub None gdy brak danych."""
     lats_g = cmax["lats"]   # (H, W) float32 — środki pikseli
     lons_g = cmax["lons"]   # (H, W) float32
-    dbz_g  = cmax["dbz"]    # (H, W) float32, NaN = brak danych
+    dbz_raw = cmax["dbz"]
+    # Stack (N,H,W) → bierzemy najnowszą klatkę; stary format to (H,W)
+    dbz_g = dbz_raw[-1] if dbz_raw.ndim == 3 else dbz_raw
 
     lat_min = float(poly_deg[:, 0].min()) - 0.05
     lat_max = float(poly_deg[:, 0].max()) + 0.05
@@ -361,6 +374,134 @@ def _max_dbz_in_polygon(cmax: dict, poly_deg: np.ndarray) -> float | None:
     if vals.size == 0:
         return None
     return round(float(vals.max()), 1)
+
+
+def _fill_flow(field: np.ndarray, sigma_px: float) -> np.ndarray:
+    """Wypełnia obszary bez echa (NaN) Gaussowskim ważonym uśrednieniem sąsiedztwa."""
+    from scipy.ndimage import gaussian_filter
+    valid = np.isfinite(field)
+    f = np.where(valid, field, 0.0).astype(np.float32)
+    w = valid.astype(np.float32)
+    fs = gaussian_filter(f, sigma_px)
+    ws = gaussian_filter(w, sigma_px)
+    return np.where(ws > 0.01, fs / ws, 0.0).astype(np.float32)
+
+
+def _radar_motion(
+    cmax: dict | None, center_km: np.ndarray
+) -> tuple[float, float, float] | None:
+    """Estymuje ruch komórki burzowej metodą Farneback optical flow na danych CMAX.
+
+    Wymaga co najmniej 2 klatek w stacku i pakietu cv2 (opencv-python).
+    Zwraca (dlat, dlon, speed_kmh) lub None gdy dane niewystarczające.
+    """
+    if cmax is None:
+        return None
+    try:
+        import cv2
+    except ImportError:
+        log.debug("cv2 niedostępne — pomijam radar optical flow")
+        return None
+    from scipy.ndimage import gaussian_filter  # noqa: F401 (needed inside _fill_flow)
+
+    dbz_raw    = cmax.get("dbz")
+    timestamps = cmax.get("timestamps")
+    lats       = cmax["lats"]   # (H, W)
+    lons       = cmax["lons"]   # (H, W)
+
+    if dbz_raw is None or timestamps is None:
+        return None
+    dbz_stack = dbz_raw if dbz_raw.ndim == 3 else dbz_raw[np.newaxis]
+    if len(dbz_stack) < 2:
+        return None
+
+    # Próbkowanie do ~_FLOW_TARGET_KM rozdzielczości
+    dpix_km = abs(float(lats[0, 0] - lats[1, 0])) * _KM_PER_LAT
+    step    = max(1, round(_FLOW_TARGET_KM / dpix_km))
+
+    lats_ds     = lats[::step, ::step]
+    lons_ds     = lons[::step, ::step]
+    dpix_lat_km = abs(float(lats_ds[0, 0] - lats_ds[1, 0])) * _KM_PER_LAT
+    dpix_lon_km = abs(float(lons_ds[0, 1] - lons_ds[0, 0])) * _KM_PER_LON
+    sigma_px    = _FLOW_SIGMA_KM / ((dpix_lat_km + dpix_lon_km) / 2.0)
+
+    H, W = lats_ds.shape
+    sum_u = np.zeros((H, W), dtype=np.float32)
+    sum_v = np.zeros((H, W), dtype=np.float32)
+    sum_w = np.zeros((H, W), dtype=np.float32)
+    n_pairs = 0
+
+    def _to_u8(arr: np.ndarray) -> np.ndarray:
+        return np.clip(np.nan_to_num(arr, nan=0.0) / 65.0 * 255, 0, 255).astype(np.uint8)
+
+    for i in range(len(dbz_stack) - 1):
+        dt_s = float(timestamps[i + 1] - timestamps[i])
+        if not (0 < dt_s <= 900):   # odrzuć pary >15 min lub cofnięte w czasie
+            continue
+
+        f1 = _to_u8(dbz_stack[i    ][::step, ::step])
+        f2 = _to_u8(dbz_stack[i + 1][::step, ::step])
+
+        flow = cv2.calcOpticalFlowFarneback(
+            f1, f2, None,
+            pyr_scale=0.5, levels=5, winsize=25,
+            iterations=3, poly_n=7, poly_sigma=1.5, flags=0,
+        )
+        # flow[...,0]=Δcol(wschód+), flow[...,1]=Δrow(południe+) → negujemy V
+        dt_h   = dt_s / 3600.0
+        u_kmh  =  flow[..., 0] * dpix_lon_km / dt_h
+        v_kmh  = -flow[..., 1] * dpix_lat_km / dt_h
+
+        # Ważymy tylko piksele z echem (dBZ > próg) w co najmniej jednej klatce
+        has_echo = (np.nan_to_num(dbz_stack[i    ][::step, ::step], nan=0.0) >= _FLOW_ECHO_THR) | \
+                   (np.nan_to_num(dbz_stack[i + 1][::step, ::step], nan=0.0) >= _FLOW_ECHO_THR)
+        w = has_echo.astype(np.float32) * float(i + 1)  # nowsze pary → wyższa waga
+
+        sum_u  += u_kmh * w
+        sum_v  += v_kmh * w
+        sum_w  += w
+        n_pairs += 1
+
+    if n_pairs == 0:
+        return None
+
+    raw_u = np.where(sum_w > 0, sum_u / sum_w, np.nan)
+    raw_v = np.where(sum_w > 0, sum_v / sum_w, np.nan)
+
+    u_field = _fill_flow(raw_u, sigma_px)
+    v_field = _fill_flow(raw_v, sigma_px)
+
+    # Znajdź piksel siatki najbliższy centroidowi klastra
+    center_lat = float(center_km[0]) / _KM_PER_LAT
+    center_lon = float(center_km[1]) / _KM_PER_LON
+    dist2_km2  = ((lats_ds - center_lat) * _KM_PER_LAT) ** 2 + \
+                 ((lons_ds - center_lon) * _KM_PER_LON) ** 2
+    i_row, i_col = np.unravel_index(int(np.argmin(dist2_km2)), dist2_km2.shape)
+
+    if float(np.sqrt(dist2_km2[i_row, i_col])) > _FLOW_MAX_ECHO_KM:
+        return None   # klaster poza zasięgiem siatki radarowej
+
+    # Sprawdź czy klaster leży blisko rzeczywistego echa (nie tylko wypełnionego pola)
+    echo_last = np.nan_to_num(dbz_stack[-1][::step, ::step], nan=0.0)
+    echo_dist2 = np.where(echo_last >= _FLOW_ECHO_THR, dist2_km2, np.inf)
+    if float(np.sqrt(float(echo_dist2.min()))) > _FLOW_SIGMA_KM * 2:
+        return None   # brak echa w pobliżu — wypełnione pole OF niewiarygodne
+
+    u_kmh_c = float(u_field[i_row, i_col])
+    v_kmh_c = float(v_field[i_row, i_col])
+    speed_kmh = math.sqrt(u_kmh_c ** 2 + v_kmh_c ** 2)
+
+    if speed_kmh < 1.0:
+        return None   # prawdopodobnie szum
+    if speed_kmh > FORECAST_MAX_KMH:
+        scale      = FORECAST_MAX_KMH / speed_kmh
+        u_kmh_c   *= scale
+        v_kmh_c   *= scale
+        speed_kmh  = FORECAST_MAX_KMH
+
+    dlat = v_kmh_c * FORECAST_AHEAD_H / _KM_PER_LAT
+    dlon = u_kmh_c * FORECAST_AHEAD_H / _KM_PER_LON
+    return dlat, dlon, round(speed_kmh)
 
 
 def _max_density_km2(cl_km: np.ndarray, cl_n: np.ndarray,
@@ -739,9 +880,16 @@ def _compute_forecast(slots: dict, now: datetime) -> dict | None:
         center_km  = cl_km.mean(axis=0)
         center_deg = cl_deg.mean(axis=0)
 
+        # Priorytet źródła ruchu: radar OF → historia wyładowań → GFS → historia (niepewna)
+        radar = _radar_motion(cmax, center_km)
         dlat, dlon, speed_kmh, hist_ok = _estimate_velocity(bins_by_t, center_km)
 
-        if hist_ok:
+        if radar is not None:
+            dlat, dlon, speed_kmh = radar
+            motion_source = "radar"
+            motion_label  = "radar CMAX"
+            log.debug("Klaster %d: radar OF %.1f km/h", cid, speed_kmh)
+        elif hist_ok:
             motion_source = "lightning"
             motion_label  = "historia wyładowań"
             log.debug("Klaster %d: historia %.1f km/h", cid, speed_kmh)
@@ -752,7 +900,7 @@ def _compute_forecast(slots: dict, now: datetime) -> dict | None:
                 motion_source = "gfs"
                 gfs_run = datetime.fromtimestamp(float(sv["init_time"][0]), tz=timezone.utc)
                 motion_label = f"GFS {gfs_run.strftime('%Y%m%d %HZ')}"
-                log.debug("Klaster %d: GFS %.1f km/h (historia niewystarczająca)", cid, speed_kmh)
+                log.debug("Klaster %d: GFS %.1f km/h", cid, speed_kmh)
             else:
                 motion_source = "lightning"
                 motion_label  = "estymacja z historii wyładowań (niepewna)"
