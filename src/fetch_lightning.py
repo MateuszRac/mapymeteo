@@ -359,7 +359,7 @@ def _max_dbz_in_polygon(cmax: dict, poly_deg: np.ndarray) -> float | None:
 
 
 def _max_density_km2(cl_km: np.ndarray, cl_n: np.ndarray,
-                     cell_km: float = 5.0, hull_area_km2: float = 0.0) -> float:
+                     cell_km: float = 10.0, hull_area_km2: float = 0.0) -> float:
     """Maksymalna gęstość wyładowań w siatce cell_km × cell_km.
 
     cl_n może być float (przeskalowane do 10-min tempa).
