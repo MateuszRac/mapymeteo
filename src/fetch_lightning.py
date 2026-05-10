@@ -456,10 +456,18 @@ _SV_MAX_AGE_H = 12   # odrzuć dane GFS starsze niż tyle godzin
 
 
 def _load_storm_vectors() -> dict | None:
-    """Wczytuje najnowszy plik storm_vectors_*.npz, jeśli jest wystarczająco świeży."""
+    """Wczytuje najnowszy plik NPZ środowiska burzowego, jeśli jest wystarczająco świeży.
+
+    Szuka najpierw storm_env_*.npz (pełne dane: wektory + CAPE + shear),
+    a następnie storm_vectors_*.npz (tylko wektory — starszy format).
+    """
     if not STORM_VECTORS_DIR.exists():
         return None
-    files = sorted(STORM_VECTORS_DIR.glob("storm_vectors_*.npz"))
+    files: list = []
+    for pattern in ("storm_env_*.npz", "storm_vectors_*.npz"):
+        files = sorted(STORM_VECTORS_DIR.glob(pattern))
+        if files:
+            break
     if not files:
         return None
     latest = files[-1]
@@ -530,6 +538,47 @@ def _gfs_motion(
     return dlat, dlon, round(speed_kmh)
 
 
+def _gfs_environment(
+    sv: dict | None, center_km: np.ndarray, now_dt: datetime
+) -> tuple[float, float, float] | None:
+    """Zwraca (cape_jkg, shear06_ms, wmaxshear_m2s2) z GFS dla centroidu klastra.
+
+    Wymaga pliku storm_env_*.npz (nowy format z pełnym środowiskiem).
+    Zwraca None jeśli dane niedostępne lub poza obszarem/oknem czasowym.
+    """
+    if sv is None or "cape" not in sv:
+        return None
+
+    lat = float(center_km[0]) / _KM_PER_LAT
+    lon = float(center_km[1]) / _KM_PER_LON
+
+    lats        = sv["lats"]
+    lons        = sv["lons"]
+    valid_times = sv["valid_times"]
+
+    if lat < float(lats.min()) or lat > float(lats.max()):
+        return None
+    if lon < float(lons.min()) or lon > float(lons.max()):
+        return None
+
+    i_lat  = int(np.argmin(np.abs(lats - lat)))
+    i_lon  = int(np.argmin(np.abs(lons - lon)))
+    now_ts = now_dt.timestamp()
+    i_time = int(np.argmin(np.abs(valid_times - now_ts)))
+
+    if abs(valid_times[i_time] - now_ts) > 5400:
+        return None
+
+    cape_v = float(sv["cape"][i_time, i_lat, i_lon])
+    shear_v = float(sv["shear"][i_time, i_lat, i_lon])
+    wms_v   = float(sv["wmaxshear"][i_time, i_lat, i_lon])
+
+    if not all(math.isfinite(x) for x in (cape_v, shear_v, wms_v)):
+        return None
+
+    return max(cape_v, 0.0), max(shear_v, 0.0), max(wms_v, 0.0)
+
+
 def _compute_forecast(slots: dict, now: datetime) -> dict | None:
     """Klasteryzuje wyładowania (DBSCAN) i dla każdego klastra liczy prognozę.
 
@@ -594,28 +643,40 @@ def _compute_forecast(slots: dict, now: datetime) -> dict | None:
         if gfs is not None:
             dlat, dlon, speed_kmh = gfs
             motion_source = "gfs"
-            log.debug("Klaster %d: GFS %.1f km/h", cid, speed_kmh)
+            gfs_run = datetime.fromtimestamp(float(sv["init_time"][0]), tz=timezone.utc)
+            motion_label = f"GFS {gfs_run.strftime('%Y%m%d %HZ')}"
+            log.debug("Klaster %d: GFS %.1f km/h (%s)", cid, speed_kmh, motion_label)
         else:
             dlat, dlon, speed_kmh = _estimate_velocity(bins_by_t, center_km)
             motion_source = "lightning"
+            motion_label  = "estymacja z historii wyładowań"
 
         # Kierunek ruchu (0° = N, zgodnie z ruchem wskazówek zegara)
-        dy_km         = dlat * _KM_PER_LAT
-        dx_km         = dlon * _KM_PER_LON
-        dir_deg       = round(math.degrees(math.atan2(dx_km, dy_km)) % 360)
-        dir_compass   = _compass(dir_deg)
+        dy_km       = dlat * _KM_PER_LAT
+        dx_km       = dlon * _KM_PER_LON
+        dir_deg     = round(math.degrees(math.atan2(dx_km, dy_km)) % 360)
+        dir_compass = _compass(dir_deg)
 
-        # Pole aktualnego klastra (przed rzutowaniem)
-        hull_cur_km   = _convex_hull_km(cl_km)
-        area_km2      = round(_polygon_area_km2(hull_cur_km), 1)
+        # Otoczka pełnego klastra (20 min) — używana do polygonu prognozy
+        hull_cur_km = _convex_hull_km(cl_km)
 
-        # Statystyki z ostatnich 10 min
-        m10           = cl_t >= t10_cut
-        cl_km_10      = cl_km[m10]
-        cl_n_10       = cl_n[m10]
-        count_10min   = int(cl_n_10.sum()) if m10.any() else 0
-        density_km2   = round(count_10min / area_km2, 4) if area_km2 > 0 else 0.0
-        max_dens_km2  = _max_density_km2(cl_km_10, cl_n_10)
+        # Statystyki z ostatnich 10 min — obszar liczony z punktów 10-minutowych
+        m10         = cl_t >= t10_cut
+        cl_km_10    = cl_km[m10]
+        cl_n_10     = cl_n[m10]
+        count_10min = int(cl_n_10.sum()) if m10.any() else 0
+
+        if len(cl_km_10) >= 3:
+            hull_10_km = _convex_hull_km(cl_km_10)
+            area_km2   = round(_polygon_area_km2(hull_10_km), 1)
+        else:
+            area_km2   = round(_polygon_area_km2(hull_cur_km), 1)
+
+        density_km2  = round(count_10min / area_km2, 4) if area_km2 > 0 else 0.0
+        max_dens_km2 = _max_density_km2(cl_km_10, cl_n_10)
+
+        # Środowisko konwekcyjne z GFS (CAPE, shear, WmaxShear) dla centroidu
+        env = _gfs_environment(sv, center_km, now_naive)
 
         # Polygon prognozy: stożek niepewności.
         # Bufor bieżący (mały) i przesunięty (rosnący z czasem i dystansem),
@@ -644,6 +705,7 @@ def _compute_forecast(slots: dict, now: datetime) -> dict | None:
             "polygon":           [[round(float(p[0]), 4), round(float(p[1]), 4)] for p in poly_deg],
             "cluster_type":      cluster_type,
             "motion_source":     motion_source,
+            "motion_label":      motion_label,
             "speed_kmh":         speed_kmh,
             "direction_deg":     dir_deg,
             "direction_compass": dir_compass,
@@ -652,6 +714,9 @@ def _compute_forecast(slots: dict, now: datetime) -> dict | None:
                 "area_km2":        area_km2,
                 "density_km2":     density_km2,
                 "max_density_km2": max_dens_km2,
+                "cape_jkg":        round(env[0]) if env else None,
+                "shear06_ms":      round(env[1], 1) if env else None,
+                "wmaxshear":       round(env[2]) if env else None,
             },
         })
 

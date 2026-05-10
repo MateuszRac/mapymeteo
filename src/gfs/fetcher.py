@@ -30,6 +30,7 @@ DEFAULT_PARAMS: dict = {
     "lev_850_mb": "on",
     "lev_500_mb": "on",
     "lev_450_mb": "on",
+    "lev_180-0_mb_above_ground": "on",
     "lev_10_m_above_ground": "on",
     "lev_6000-0_m_above_ground": "on",
     "subregion": "",
