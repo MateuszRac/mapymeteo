@@ -3,8 +3,10 @@
 import json
 import logging
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+import numpy as np
 
 from ..radar.decoder import RadarDecoder
 from ..radar.renderer import RadarRenderer
@@ -150,6 +152,9 @@ class RadarPipeline:
                 _save_json(frame_meta, json_path)
                 log.info("[%s] Wygenerowano: %s.png", product_key, ts_str)
 
+                if "CMAX" in product_key:
+                    self._save_cmax_cache(radar_data, product_key)
+
                 image_rel = "../" + str(png_path.relative_to(self._project_path)).replace("\\", "/")
                 self._manifest.add_frame(product_key, label, frame_meta, image_rel)
 
@@ -169,6 +174,37 @@ class RadarPipeline:
 
         log.info("[%s] Gotowe: +%d nowych overlayow.", key_prefix, total)
         return total
+
+    def _save_cmax_cache(self, radar_data: dict, product_key: str) -> None:
+        """Zapisuje siatkę CMAX [dBZ] jako NPZ do odczytu przez fetch_lightning.py."""
+        try:
+            from pyproj import Transformer
+
+            cache_dir = self._project_path / "data" / "cmax"
+            cache_dir.mkdir(parents=True, exist_ok=True)
+
+            # Konwersja EPSG:3857 → EPSG:4326 (lon/lat w stopniach)
+            t = Transformer.from_crs("EPSG:3857", "EPSG:4326", always_xy=True)
+            lon_mesh, lat_mesh = t.transform(radar_data["lon_mesh"], radar_data["lat_mesh"])
+
+            # Środki pikseli z narożników siatki (mesh jest o 1 większy od danych)
+            lat_c = ((lat_mesh[:-1, :-1] + lat_mesh[1:, 1:]) / 2).astype(np.float32)
+            lon_c = ((lon_mesh[:-1, :-1] + lon_mesh[1:, 1:]) / 2).astype(np.float32)
+
+            ds_name = next(iter(radar_data["radar_data"]))
+            dbz = radar_data["radar_data"][ds_name].astype(np.float32)
+
+            ts = radar_data["start_date"].replace(tzinfo=timezone.utc).timestamp()
+
+            np.savez_compressed(
+                cache_dir / "cmax_latest.npz",
+                lats=lat_c, lons=lon_c, dbz=dbz,
+                timestamp=np.array([ts], dtype=np.float64),
+            )
+            log.info("[%s] Cache CMAX zapisany (siatka %dx%d)", product_key,
+                     dbz.shape[0], dbz.shape[1])
+        except Exception as exc:
+            log.warning("[%s] Nie udało się zapisać cache CMAX: %s", product_key, exc)
 
     def _to_remote(self, local_path: Path) -> str:
         rel = local_path.relative_to(self._project_path / "img")

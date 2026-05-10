@@ -43,6 +43,8 @@ LOG_DIR           = PROJECT_PATH / "logs"
 WATCH_POINTS_FILE = ROOT / "config" / "watch_points.json"
 ALERT_STATE_FILE  = PROJECT_PATH / "data" / "alert_state.json"
 STORM_VECTORS_DIR = PROJECT_PATH / "data" / "storm_vectors"
+_CMAX_CACHE_PATH  = PROJECT_PATH / "data" / "cmax" / "cmax_latest.npz"
+_CMAX_MAX_AGE_S   = 20 * 60   # ignoruj cache starszy niż 20 min
 ALERT_COOLDOWN_S  = 3600   # min. przerwa między alertami dla tej samej lokalizacji [s]
 
 COLLECTION_ID   = "EO:EUM:DAT:0782"
@@ -292,6 +294,68 @@ def _polygon_area_km2(hull_km: np.ndarray) -> float:
     i = np.arange(len(hull_km))
     j = (i + 1) % len(hull_km)
     return float(abs((x[i] * y[j] - x[j] * y[i]).sum()) / 2.0)
+
+
+def _load_cmax() -> dict | None:
+    """Ładuje siatkę CMAX z NPZ-cache. Zwraca None gdy brak pliku lub cache za stary."""
+    if not _CMAX_CACHE_PATH.exists():
+        return None
+    try:
+        import time
+        c = np.load(_CMAX_CACHE_PATH)
+        if time.time() - float(c["timestamp"][0]) > _CMAX_MAX_AGE_S:
+            return None
+        return c
+    except Exception:
+        return None
+
+
+def _pip_batch(lats: np.ndarray, lons: np.ndarray, poly: np.ndarray) -> np.ndarray:
+    """Ray-casting PIP (wektorowo). poly: (N,2) [lat, lon], zwraca bool array."""
+    inside = np.zeros(len(lats), dtype=bool)
+    n = len(poly)
+    j = n - 1
+    for i in range(n):
+        yi, xi = float(poly[i, 0]), float(poly[i, 1])
+        yj, xj = float(poly[j, 0]), float(poly[j, 1])
+        dy = yj - yi or 1e-15
+        cond = ((yi > lats) != (yj > lats)) & (
+            lons < xi + (xj - xi) * (lats - yi) / dy
+        )
+        inside ^= cond
+        j = i
+    return inside
+
+
+def _max_dbz_in_polygon(cmax: dict, poly_deg: np.ndarray) -> float | None:
+    """Zwraca max dBZ CMAX wewnątrz polygonu [lat, lon] lub None gdy brak danych."""
+    lats_g = cmax["lats"]   # (H, W) float32 — środki pikseli
+    lons_g = cmax["lons"]   # (H, W) float32
+    dbz_g  = cmax["dbz"]    # (H, W) float32, NaN = brak danych
+
+    lat_min = float(poly_deg[:, 0].min()) - 0.05
+    lat_max = float(poly_deg[:, 0].max()) + 0.05
+    lon_min = float(poly_deg[:, 1].min()) - 0.05
+    lon_max = float(poly_deg[:, 1].max()) + 0.05
+
+    bb = (
+        (lats_g >= lat_min) & (lats_g <= lat_max) &
+        (lons_g >= lon_min) & (lons_g <= lon_max)
+    )
+    rows, cols = np.where(bb)
+    if rows.size == 0:
+        return None
+
+    flat_lats = lats_g[rows, cols]
+    flat_lons = lons_g[rows, cols]
+    flat_dbz  = dbz_g[rows, cols]
+
+    inside = _pip_batch(flat_lats, flat_lons, poly_deg)
+    vals = flat_dbz[inside]
+    vals = vals[~np.isnan(vals)]
+    if vals.size == 0:
+        return None
+    return round(float(vals.max()), 1)
 
 
 def _max_density_km2(cl_km: np.ndarray, cl_n: np.ndarray,
@@ -633,7 +697,8 @@ def _compute_forecast(slots: dict, now: datetime) -> dict | None:
     if len(recent_deg) < FORECAST_MIN_CLUSTER:
         return None
 
-    sv       = _load_storm_vectors()
+    sv   = _load_storm_vectors()
+    cmax = _load_cmax()
     pts_deg  = np.array(recent_deg)
     pts_km   = _to_km(pts_deg)
     pts_n    = np.array(recent_n,  dtype=int)
@@ -705,6 +770,10 @@ def _compute_forecast(slots: dict, now: datetime) -> dict | None:
         # Środowisko konwekcyjne z GFS (CAPE, shear, WmaxShear) dla centroidu
         env = _gfs_environment(sv, center_km, now_naive)
 
+        # Maks. odbiciowość CMAX dla obszaru bieżącego klastra
+        hull_cur_deg = _to_deg(hull_cur_km)
+        max_dbz = _max_dbz_in_polygon(cmax, hull_cur_deg) if cmax is not None else None
+
         # Polygon prognozy: stożek niepewności.
         # Bufor bieżący (mały) i przesunięty (rosnący z czasem i dystansem),
         # następnie wypukła otoczka obu — naturalny kształt stożka.
@@ -741,6 +810,7 @@ def _compute_forecast(slots: dict, now: datetime) -> dict | None:
                 "area_km2":        area_km2,
                 "density_km2":     density_km2,
                 "max_density_km2": max_dens_km2,
+                "max_dbz":         max_dbz,
                 "cape_jkg":        round(env[0]) if env else None,
                 "shear06_ms":      round(env[1], 1) if env else None,
                 "wmaxshear":       round(env[2]) if env else None,

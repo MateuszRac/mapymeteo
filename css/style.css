@@ -636,6 +636,10 @@ body {
   font-style: italic;
   padding-top: 3px;
 }
+.fc-dbz {
+  font-weight: bold;
+  color: #e8c020;
+}
 
 .leaflet-popup-content-wrapper {
   background: rgba(9,13,24,.96) !important;

@@ -69,6 +69,9 @@ function _buildPopup(cl) {
   const wmsRow = s.wmaxshear != null
     ? `<tr><td>WmaxShear</td><td>${_fmt(s.wmaxshear, 'm²/s²')}</td></tr>` : '';
   const envSep = hasEnv ? '<tr><td colspan="2" class="fc-sep"></td></tr>' : '';
+  const dbzRow = s.max_dbz != null
+    ? `<tr><td>Maks. CMAX</td><td class="fc-dbz">${s.max_dbz} dBZ</td></tr>` : '';
+  const dbzSep = s.max_dbz != null ? '<tr><td colspan="2" class="fc-sep"></td></tr>' : '';
 
   return `<div class="lgtn-popup">
     ${label}
@@ -81,6 +84,7 @@ function _buildPopup(cl) {
       <tr><td>Pole klastra</td><td>${s.area_km2 != null ? s.area_km2 + ' km²' : '—'}</td></tr>
       <tr><td>Gęstość</td><td>${s.density_km2 != null ? s.density_km2 + ' /km²' : '—'}</td></tr>
       <tr><td>Maks. gęstość</td><td>${s.max_density_km2 != null ? s.max_density_km2 + ' /km²' : '—'}</td></tr>
+      ${dbzSep}${dbzRow}
       ${envSep}
       ${envTime}${capeRow}${shearRow}${wmsRow}
     </table>
