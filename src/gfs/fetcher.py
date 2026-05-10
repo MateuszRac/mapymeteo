@@ -22,12 +22,16 @@ DEFAULT_PARAMS: dict = {
     "var_HGT": "on",
     "var_UGRD": "on",
     "var_VGRD": "on",
+    "var_USTM" : "on",
+    "var_VSTM": "on",
+    "var_ACPCP": "on",
     "lev_mean_sea_level": "on",
     "lev_surface": "on",
     "lev_850_mb": "on",
     "lev_500_mb": "on",
     "lev_450_mb": "on",
     "lev_10_m_above_ground": "on",
+    "lev_6000-0_m_above_ground": "on",
     "subregion": "",
     "toplat": 70,
     "bottomlat": 25,
@@ -185,6 +189,20 @@ class GfsFetcher:
             path = self.download(url, filename=row["file_name"])
             paths.append(path)
         return paths
+
+    def summarize_files(self, file_paths: list[Path] | None = None) -> "pd.DataFrame":
+        """Scan one GRIB file and return a table of available parameters/levels.
+
+        All files in a single GFS run share the same variable set, so only the
+        first file is scanned. Pass file_paths to override the auto-discovery.
+        """
+        from .reader import GribReader
+
+        if file_paths is None:
+            file_paths = sorted(self.output_dir.glob("*.pgrb2*"))
+        if not file_paths:
+            raise FileNotFoundError(f"No GRIB files found in {self.output_dir}")
+        return GribReader(file_paths[0]).scan_file()
 
     def clear(self) -> None:
         """Delete all files in the output directory (leaves subdirs intact)."""

@@ -71,8 +71,8 @@ async function init() {
     player = createPlayer({
       onFrame: frame => {
         const _p = selKey ? parseKey(selKey) : null;
-        const isFull = _p ? (_p.isCompo || _p.isGrs) : false;
-        showFrame(map, frame, parseInt(opacitySl.value, 10) / 100, !isFull);
+        const isRect = _p ? (_p.isCompo || _p.isGrs) : false;
+        showFrame(map, frame, parseInt(opacitySl.value, 10) / 100, true, isRect);
         updateTimeDisplay(frame.timestamp);
         updateColorbar(frame.quantity ?? (selKey ? parseKey(selKey).unit : null));
         const { missing } = renderLightning(frame.timestamp);

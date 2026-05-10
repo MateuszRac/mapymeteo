@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import xarray as xr
 
 
@@ -73,3 +74,34 @@ class GribReader:
             filter_by_keys=filter_keys,
         )
         return np.unique(ds["typeOfLevel"].values)
+
+    def scan_file(self) -> pd.DataFrame:
+        """Return a table of all parameters, typeOfLevel, level, and stepType in the file.
+
+        Uses cfgrib.open_datasets which splits the GRIB into logical groups.
+        Useful for discovering what to pass to get_parameter().
+        """
+        import cfgrib
+
+        records = []
+        for ds in cfgrib.open_datasets(str(self.file_path)):
+            for var in ds.data_vars:
+                da = ds[var]
+                type_of_level = da.attrs.get("GRIB_typeOfLevel", "?")
+                step_type = da.attrs.get("GRIB_stepType", "?")
+
+                level_val = da.coords.get(type_of_level, da.coords.get("level", None))
+                if level_val is not None:
+                    levels = sorted(set(float(v) for v in level_val.values.flatten()))
+                else:
+                    levels = [None]
+
+                for lev in levels:
+                    records.append({
+                        "parameter": var,
+                        "typeOfLevel": type_of_level,
+                        "level": lev,
+                        "stepType": step_type,
+                    })
+
+        return pd.DataFrame(records).drop_duplicates().reset_index(drop=True)

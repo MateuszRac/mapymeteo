@@ -75,6 +75,44 @@ class MLCape(GfsProduct):
         self.builder.add_title(ax, mlcape.valid_time.values, prefix="MLCAPE")
 
 
+class ConvectivePrecipProduct(GfsProduct):
+    """Accumulated convective precipitation shading (greens) + storm motion barbs."""
+
+    NAME = "conv_precip"
+    TITLE = "Opad konwekcyjny + wektor burz"
+    extent = (10, 30, 47, 56)
+
+    def _render(self, file_path: str | Path) -> None:
+        reader = GribReader(file_path)
+
+        # Accumulated convective precip [kg/m² == mm]
+        acpcp = reader.get_parameter("prate", "surface", 0, step_type="instant")
+
+        # Storm motion vectors — GFS stores these at the 0–6000 m layer
+        # typeOfLevel='heightAboveGroundLayer', level=6000 (top of layer in cfgrib)
+        try:
+            ustm = reader.get_parameter("ustm", "heightAboveGroundLayer", 6000, step_type="instant")
+            vstm = reader.get_parameter("vstm", "heightAboveGroundLayer", 6000, step_type="instant")
+            has_storm = True
+        except Exception:
+            has_storm = False
+
+        ax = self.builder.create_figure()
+
+        cs = self.builder.add_shading(
+            ax, acpcp,
+            vmin=0.5, vmax=50, step=2.5,
+            cmap="YlGn", vmin_transp=0,
+        )
+        self.builder.add_colorbar(ax, cs, "Opad konwekcyjny skum. [mm]")
+
+        if has_storm:
+            self.builder.add_barbs(ax, ustm, vstm, step=5, color="#1a1a1a")
+
+        self.builder.add_source_label(ax)
+        self.builder.add_title(ax, acpcp.valid_time.values, prefix=self.TITLE)
+
+
 class DailyConvectionProduct(GfsProduct):
     """Daily maximum CAPE × wind-shear composite across multiple forecast steps."""
 

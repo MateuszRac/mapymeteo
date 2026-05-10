@@ -1,0 +1,9 @@
+{
+  "product": "conv_precip",
+  "title": "Opad konwekcyjny + wektor burz",
+  "init_time": "202605091200",
+  "valid_time": "202605100200",
+  "forecast_hour": 14,
+  "image": "202605091200_conv_precip_202605100200.png",
+  "generated_at": "2026-05-09T21:14:55"
+}

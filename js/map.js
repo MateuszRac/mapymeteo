@@ -54,7 +54,7 @@ export function setMapStyle(style) {
 // ── Overlay radarowy ──────────────────────────────────────────────────────────
 let overlay = null;
 
-export function showFrame(map, frame, opacity, showMask = true) {
+export function showFrame(map, frame, opacity, showMask = true, useRectMask = false) {
   const bounds = L.latLngBounds(frame.bounds[0], frame.bounds[1]);
   const src    = frame.image + '?t=' + frame.timestamp;
 
@@ -71,7 +71,7 @@ export function showFrame(map, frame, opacity, showMask = true) {
   }
 
   if (showMask) {
-    _updateCoverageMask(map, frame.bounds);
+    _updateCoverageMask(map, frame.bounds, useRectMask);
   } else {
     clearCoverageMask();
   }
@@ -105,19 +105,28 @@ function _circleRing(lat, lon, km, n = 72) {
   return pts;
 }
 
-function _updateCoverageMask(map, bounds) {
-  const key = bounds[0][0] + ',' + bounds[0][1] + ',' + bounds[1][0] + ',' + bounds[1][1];
+function _rectRing(swLat, swLon, neLat, neLon) {
+  return [
+    [swLat, swLon],
+    [swLat, neLon],
+    [neLat, neLon],
+    [neLat, swLon],
+    [swLat, swLon],
+  ];
+}
+
+function _updateCoverageMask(map, bounds, useRect = false) {
+  const key = bounds[0][0] + ',' + bounds[0][1] + ',' + bounds[1][0] + ',' + bounds[1][1] + (useRect ? 'r' : 'c');
   if (key === maskBoundsKey && coverageMask) return;
   maskBoundsKey = key;
 
-  const swLat    = bounds[0][0], swLon = bounds[0][1];
-  const neLat    = bounds[1][0], neLon = bounds[1][1];
-  const centerLat = (swLat + neLat) / 2;
-  const centerLon = (swLon + neLon) / 2;
-  const radiusKm  = (neLat - swLat) / 2 * 111.32;
+  const swLat = bounds[0][0], swLon = bounds[0][1];
+  const neLat = bounds[1][0], neLon = bounds[1][1];
 
   const outerRing = [[90, -180], [90, 180], [-90, 180], [-90, -180]];
-  const innerRing = _circleRing(centerLat, centerLon, radiusKm);
+  const innerRing = useRect
+    ? _rectRing(swLat, swLon, neLat, neLon)
+    : _circleRing((swLat + neLat) / 2, (swLon + neLon) / 2, (neLat - swLat) / 2 * 111.32);
 
   if (coverageMask) {
     coverageMask.setLatLngs([outerRing, innerRing]);

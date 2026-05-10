@@ -332,6 +332,27 @@ class MapBuilder:
             marker="o", edgecolors="white", linewidths=0.6, zorder=zorder,
         )
 
+    def add_barbs(
+        self,
+        ax,
+        u: xr.DataArray,
+        v: xr.DataArray,
+        step: int = 5,
+        color: str = "black",
+        length: float = 5.5,
+        zorder: int = 10,
+    ) -> None:
+        """Add wind barbs on a subsampled grid (u/v in m/s)."""
+        lon = u["longitude"].values
+        lat = u["latitude"].values
+        ax.barbs(
+            lon[::step], lat[::step],
+            u.values[::step, ::step], v.values[::step, ::step],
+            color=color, length=length, zorder=zorder,
+            transform=ccrs.PlateCarree(),
+            barb_increments={"half": 2.5, "full": 5.0, "flag": 25.0},
+        )
+
     # ------------------------------------------------------------------
     # Labels / colorbar
     # ------------------------------------------------------------------

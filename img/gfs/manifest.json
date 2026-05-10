@@ -1,504 +1,150 @@
 {
   "products": {
-    "thetae": {
-      "name": "θe 850 hPa · MSLP",
-      "runs": {
-        "202605061200": [
-          {
-            "valid_time": "202605061200",
-            "forecast_hour": 0,
-            "image": "202605061200_thetae_202605061200.png"
-          },
-          {
-            "valid_time": "202605061300",
-            "forecast_hour": 1,
-            "image": "202605061200_thetae_202605061300.png"
-          },
-          {
-            "valid_time": "202605061400",
-            "forecast_hour": 2,
-            "image": "202605061200_thetae_202605061400.png"
-          },
-          {
-            "valid_time": "202605061500",
-            "forecast_hour": 3,
-            "image": "202605061200_thetae_202605061500.png"
-          },
-          {
-            "valid_time": "202605061600",
-            "forecast_hour": 4,
-            "image": "202605061200_thetae_202605061600.png"
-          },
-          {
-            "valid_time": "202605061700",
-            "forecast_hour": 5,
-            "image": "202605061200_thetae_202605061700.png"
-          },
-          {
-            "valid_time": "202605061800",
-            "forecast_hour": 6,
-            "image": "202605061200_thetae_202605061800.png"
-          },
-          {
-            "valid_time": "202605061900",
-            "forecast_hour": 7,
-            "image": "202605061200_thetae_202605061900.png"
-          },
-          {
-            "valid_time": "202605062000",
-            "forecast_hour": 8,
-            "image": "202605061200_thetae_202605062000.png"
-          },
-          {
-            "valid_time": "202605062100",
-            "forecast_hour": 9,
-            "image": "202605061200_thetae_202605062100.png"
-          },
-          {
-            "valid_time": "202605062200",
-            "forecast_hour": 10,
-            "image": "202605061200_thetae_202605062200.png"
-          },
-          {
-            "valid_time": "202605062300",
-            "forecast_hour": 11,
-            "image": "202605061200_thetae_202605062300.png"
-          },
-          {
-            "valid_time": "202605070000",
-            "forecast_hour": 12,
-            "image": "202605061200_thetae_202605070000.png"
-          },
-          {
-            "valid_time": "202605070100",
-            "forecast_hour": 13,
-            "image": "202605061200_thetae_202605070100.png"
-          },
-          {
-            "valid_time": "202605070200",
-            "forecast_hour": 14,
-            "image": "202605061200_thetae_202605070200.png"
-          },
-          {
-            "valid_time": "202605070300",
-            "forecast_hour": 15,
-            "image": "202605061200_thetae_202605070300.png"
-          },
-          {
-            "valid_time": "202605070400",
-            "forecast_hour": 16,
-            "image": "202605061200_thetae_202605070400.png"
-          },
-          {
-            "valid_time": "202605070500",
-            "forecast_hour": 17,
-            "image": "202605061200_thetae_202605070500.png"
-          },
-          {
-            "valid_time": "202605070600",
-            "forecast_hour": 18,
-            "image": "202605061200_thetae_202605070600.png"
-          },
-          {
-            "valid_time": "202605070700",
-            "forecast_hour": 19,
-            "image": "202605061200_thetae_202605070700.png"
-          },
-          {
-            "valid_time": "202605070800",
-            "forecast_hour": 20,
-            "image": "202605061200_thetae_202605070800.png"
-          },
-          {
-            "valid_time": "202605070900",
-            "forecast_hour": 21,
-            "image": "202605061200_thetae_202605070900.png"
-          },
-          {
-            "valid_time": "202605071000",
-            "forecast_hour": 22,
-            "image": "202605061200_thetae_202605071000.png"
-          },
-          {
-            "valid_time": "202605071100",
-            "forecast_hour": 23,
-            "image": "202605061200_thetae_202605071100.png"
-          }
-        ]
-      }
-    },
     "wmaxshear": {
-      "name": "WmaxShear 0–6 km",
-      "runs": {
-        "202605061200": [
-          {
-            "valid_time": "202605061200",
-            "forecast_hour": 0,
-            "image": "202605061200_wmaxshear_202605061200.png"
-          },
-          {
-            "valid_time": "202605061300",
-            "forecast_hour": 1,
-            "image": "202605061200_wmaxshear_202605061300.png"
-          },
-          {
-            "valid_time": "202605061400",
-            "forecast_hour": 2,
-            "image": "202605061200_wmaxshear_202605061400.png"
-          },
-          {
-            "valid_time": "202605061500",
-            "forecast_hour": 3,
-            "image": "202605061200_wmaxshear_202605061500.png"
-          },
-          {
-            "valid_time": "202605061600",
-            "forecast_hour": 4,
-            "image": "202605061200_wmaxshear_202605061600.png"
-          },
-          {
-            "valid_time": "202605061700",
-            "forecast_hour": 5,
-            "image": "202605061200_wmaxshear_202605061700.png"
-          },
-          {
-            "valid_time": "202605061800",
-            "forecast_hour": 6,
-            "image": "202605061200_wmaxshear_202605061800.png"
-          },
-          {
-            "valid_time": "202605061900",
-            "forecast_hour": 7,
-            "image": "202605061200_wmaxshear_202605061900.png"
-          },
-          {
-            "valid_time": "202605062000",
-            "forecast_hour": 8,
-            "image": "202605061200_wmaxshear_202605062000.png"
-          },
-          {
-            "valid_time": "202605062100",
-            "forecast_hour": 9,
-            "image": "202605061200_wmaxshear_202605062100.png"
-          },
-          {
-            "valid_time": "202605062200",
-            "forecast_hour": 10,
-            "image": "202605061200_wmaxshear_202605062200.png"
-          },
-          {
-            "valid_time": "202605062300",
-            "forecast_hour": 11,
-            "image": "202605061200_wmaxshear_202605062300.png"
-          },
-          {
-            "valid_time": "202605070000",
-            "forecast_hour": 12,
-            "image": "202605061200_wmaxshear_202605070000.png"
-          },
-          {
-            "valid_time": "202605070100",
-            "forecast_hour": 13,
-            "image": "202605061200_wmaxshear_202605070100.png"
-          },
-          {
-            "valid_time": "202605070200",
-            "forecast_hour": 14,
-            "image": "202605061200_wmaxshear_202605070200.png"
-          },
-          {
-            "valid_time": "202605070300",
-            "forecast_hour": 15,
-            "image": "202605061200_wmaxshear_202605070300.png"
-          },
-          {
-            "valid_time": "202605070400",
-            "forecast_hour": 16,
-            "image": "202605061200_wmaxshear_202605070400.png"
-          },
-          {
-            "valid_time": "202605070500",
-            "forecast_hour": 17,
-            "image": "202605061200_wmaxshear_202605070500.png"
-          },
-          {
-            "valid_time": "202605070600",
-            "forecast_hour": 18,
-            "image": "202605061200_wmaxshear_202605070600.png"
-          },
-          {
-            "valid_time": "202605070700",
-            "forecast_hour": 19,
-            "image": "202605061200_wmaxshear_202605070700.png"
-          },
-          {
-            "valid_time": "202605070800",
-            "forecast_hour": 20,
-            "image": "202605061200_wmaxshear_202605070800.png"
-          },
-          {
-            "valid_time": "202605070900",
-            "forecast_hour": 21,
-            "image": "202605061200_wmaxshear_202605070900.png"
-          },
-          {
-            "valid_time": "202605071000",
-            "forecast_hour": 22,
-            "image": "202605061200_wmaxshear_202605071000.png"
-          },
-          {
-            "valid_time": "202605071100",
-            "forecast_hour": 23,
-            "image": "202605061200_wmaxshear_202605071100.png"
-          }
-        ],
-        "202605071200": [
-          {
-            "valid_time": "202605071200",
-            "forecast_hour": 0,
-            "image": "202605071200_wmaxshear_202605071200.png"
-          },
-          {
-            "valid_time": "202605071300",
-            "forecast_hour": 1,
-            "image": "202605071200_wmaxshear_202605071300.png"
-          },
-          {
-            "valid_time": "202605071400",
-            "forecast_hour": 2,
-            "image": "202605071200_wmaxshear_202605071400.png"
-          },
-          {
-            "valid_time": "202605071500",
-            "forecast_hour": 3,
-            "image": "202605071200_wmaxshear_202605071500.png"
-          },
-          {
-            "valid_time": "202605071600",
-            "forecast_hour": 4,
-            "image": "202605071200_wmaxshear_202605071600.png"
-          },
-          {
-            "valid_time": "202605071700",
-            "forecast_hour": 5,
-            "image": "202605071200_wmaxshear_202605071700.png"
-          },
-          {
-            "valid_time": "202605071800",
-            "forecast_hour": 6,
-            "image": "202605071200_wmaxshear_202605071800.png"
-          },
-          {
-            "valid_time": "202605071900",
-            "forecast_hour": 7,
-            "image": "202605071200_wmaxshear_202605071900.png"
-          },
-          {
-            "valid_time": "202605072000",
-            "forecast_hour": 8,
-            "image": "202605071200_wmaxshear_202605072000.png"
-          },
-          {
-            "valid_time": "202605072100",
-            "forecast_hour": 9,
-            "image": "202605071200_wmaxshear_202605072100.png"
-          },
-          {
-            "valid_time": "202605072200",
-            "forecast_hour": 10,
-            "image": "202605071200_wmaxshear_202605072200.png"
-          },
-          {
-            "valid_time": "202605072300",
-            "forecast_hour": 11,
-            "image": "202605071200_wmaxshear_202605072300.png"
-          },
-          {
-            "valid_time": "202605080000",
-            "forecast_hour": 12,
-            "image": "202605071200_wmaxshear_202605080000.png"
-          },
-          {
-            "valid_time": "202605080100",
-            "forecast_hour": 13,
-            "image": "202605071200_wmaxshear_202605080100.png"
-          },
-          {
-            "valid_time": "202605080200",
-            "forecast_hour": 14,
-            "image": "202605071200_wmaxshear_202605080200.png"
-          },
-          {
-            "valid_time": "202605080300",
-            "forecast_hour": 15,
-            "image": "202605071200_wmaxshear_202605080300.png"
-          },
-          {
-            "valid_time": "202605080400",
-            "forecast_hour": 16,
-            "image": "202605071200_wmaxshear_202605080400.png"
-          },
-          {
-            "valid_time": "202605080500",
-            "forecast_hour": 17,
-            "image": "202605071200_wmaxshear_202605080500.png"
-          },
-          {
-            "valid_time": "202605080600",
-            "forecast_hour": 18,
-            "image": "202605071200_wmaxshear_202605080600.png"
-          },
-          {
-            "valid_time": "202605080700",
-            "forecast_hour": 19,
-            "image": "202605071200_wmaxshear_202605080700.png"
-          },
-          {
-            "valid_time": "202605080800",
-            "forecast_hour": 20,
-            "image": "202605071200_wmaxshear_202605080800.png"
-          },
-          {
-            "valid_time": "202605080900",
-            "forecast_hour": 21,
-            "image": "202605071200_wmaxshear_202605080900.png"
-          },
-          {
-            "valid_time": "202605081000",
-            "forecast_hour": 22,
-            "image": "202605071200_wmaxshear_202605081000.png"
-          },
-          {
-            "valid_time": "202605081100",
-            "forecast_hour": 23,
-            "image": "202605071200_wmaxshear_202605081100.png"
-          }
-        ]
-      }
-    },
-    "mlcape": {
       "name": "MLCAPE",
       "runs": {
-        "202605061200": [
+        "202605091200": [
           {
-            "valid_time": "202605061200",
+            "valid_time": "202605091200",
             "forecast_hour": 0,
-            "image": "202605061200_mlcape_202605061200.png"
+            "image": "202605091200_wmaxshear_202605091200.png"
           },
           {
-            "valid_time": "202605061300",
+            "valid_time": "202605091300",
             "forecast_hour": 1,
-            "image": "202605061200_mlcape_202605061300.png"
+            "image": "202605091200_wmaxshear_202605091300.png"
           },
           {
-            "valid_time": "202605061400",
+            "valid_time": "202605091400",
             "forecast_hour": 2,
-            "image": "202605061200_mlcape_202605061400.png"
+            "image": "202605091200_wmaxshear_202605091400.png"
+          }
+        ]
+      }
+    },
+    "conv_precip": {
+      "name": "Opad konwekcyjny + wektor burz",
+      "runs": {
+        "202605091200": [
+          {
+            "valid_time": "202605091200",
+            "forecast_hour": 0,
+            "image": "202605091200_conv_precip_202605091200.png"
           },
           {
-            "valid_time": "202605061500",
+            "valid_time": "202605091300",
+            "forecast_hour": 1,
+            "image": "202605091200_conv_precip_202605091300.png"
+          },
+          {
+            "valid_time": "202605091400",
+            "forecast_hour": 2,
+            "image": "202605091200_conv_precip_202605091400.png"
+          },
+          {
+            "valid_time": "202605091500",
             "forecast_hour": 3,
-            "image": "202605061200_mlcape_202605061500.png"
+            "image": "202605091200_conv_precip_202605091500.png"
           },
           {
-            "valid_time": "202605061600",
+            "valid_time": "202605091600",
             "forecast_hour": 4,
-            "image": "202605061200_mlcape_202605061600.png"
+            "image": "202605091200_conv_precip_202605091600.png"
           },
           {
-            "valid_time": "202605061700",
+            "valid_time": "202605091700",
             "forecast_hour": 5,
-            "image": "202605061200_mlcape_202605061700.png"
+            "image": "202605091200_conv_precip_202605091700.png"
           },
           {
-            "valid_time": "202605061800",
+            "valid_time": "202605091800",
             "forecast_hour": 6,
-            "image": "202605061200_mlcape_202605061800.png"
+            "image": "202605091200_conv_precip_202605091800.png"
           },
           {
-            "valid_time": "202605061900",
+            "valid_time": "202605091900",
             "forecast_hour": 7,
-            "image": "202605061200_mlcape_202605061900.png"
+            "image": "202605091200_conv_precip_202605091900.png"
           },
           {
-            "valid_time": "202605062000",
+            "valid_time": "202605092000",
             "forecast_hour": 8,
-            "image": "202605061200_mlcape_202605062000.png"
+            "image": "202605091200_conv_precip_202605092000.png"
           },
           {
-            "valid_time": "202605062100",
+            "valid_time": "202605092100",
             "forecast_hour": 9,
-            "image": "202605061200_mlcape_202605062100.png"
+            "image": "202605091200_conv_precip_202605092100.png"
           },
           {
-            "valid_time": "202605062200",
+            "valid_time": "202605092200",
             "forecast_hour": 10,
-            "image": "202605061200_mlcape_202605062200.png"
+            "image": "202605091200_conv_precip_202605092200.png"
           },
           {
-            "valid_time": "202605062300",
+            "valid_time": "202605092300",
             "forecast_hour": 11,
-            "image": "202605061200_mlcape_202605062300.png"
+            "image": "202605091200_conv_precip_202605092300.png"
           },
           {
-            "valid_time": "202605070000",
+            "valid_time": "202605100000",
             "forecast_hour": 12,
-            "image": "202605061200_mlcape_202605070000.png"
+            "image": "202605091200_conv_precip_202605100000.png"
           },
           {
-            "valid_time": "202605070100",
+            "valid_time": "202605100100",
             "forecast_hour": 13,
-            "image": "202605061200_mlcape_202605070100.png"
+            "image": "202605091200_conv_precip_202605100100.png"
           },
           {
-            "valid_time": "202605070200",
+            "valid_time": "202605100200",
             "forecast_hour": 14,
-            "image": "202605061200_mlcape_202605070200.png"
+            "image": "202605091200_conv_precip_202605100200.png"
           },
           {
-            "valid_time": "202605070300",
+            "valid_time": "202605100300",
             "forecast_hour": 15,
-            "image": "202605061200_mlcape_202605070300.png"
+            "image": "202605091200_conv_precip_202605100300.png"
           },
           {
-            "valid_time": "202605070400",
+            "valid_time": "202605100400",
             "forecast_hour": 16,
-            "image": "202605061200_mlcape_202605070400.png"
+            "image": "202605091200_conv_precip_202605100400.png"
           },
           {
-            "valid_time": "202605070500",
+            "valid_time": "202605100500",
             "forecast_hour": 17,
-            "image": "202605061200_mlcape_202605070500.png"
+            "image": "202605091200_conv_precip_202605100500.png"
           },
           {
-            "valid_time": "202605070600",
+            "valid_time": "202605100600",
             "forecast_hour": 18,
-            "image": "202605061200_mlcape_202605070600.png"
+            "image": "202605091200_conv_precip_202605100600.png"
           },
           {
-            "valid_time": "202605070700",
+            "valid_time": "202605100700",
             "forecast_hour": 19,
-            "image": "202605061200_mlcape_202605070700.png"
+            "image": "202605091200_conv_precip_202605100700.png"
           },
           {
-            "valid_time": "202605070800",
+            "valid_time": "202605100800",
             "forecast_hour": 20,
-            "image": "202605061200_mlcape_202605070800.png"
+            "image": "202605091200_conv_precip_202605100800.png"
           },
           {
-            "valid_time": "202605070900",
+            "valid_time": "202605100900",
             "forecast_hour": 21,
-            "image": "202605061200_mlcape_202605070900.png"
+            "image": "202605091200_conv_precip_202605100900.png"
           },
           {
-            "valid_time": "202605071000",
+            "valid_time": "202605101000",
             "forecast_hour": 22,
-            "image": "202605061200_mlcape_202605071000.png"
+            "image": "202605091200_conv_precip_202605101000.png"
           },
           {
-            "valid_time": "202605071100",
+            "valid_time": "202605101100",
             "forecast_hour": 23,
-            "image": "202605061200_mlcape_202605071100.png"
+            "image": "202605091200_conv_precip_202605101100.png"
           }
         ]
       }
