@@ -520,7 +520,7 @@ def _gfs_motion(
 
     i_lat  = int(np.argmin(np.abs(lats - lat)))
     i_lon  = int(np.argmin(np.abs(lons - lon)))
-    now_ts = now_dt.timestamp()
+    now_ts = now_dt.replace(tzinfo=timezone.utc).timestamp()
     i_time = int(np.argmin(np.abs(valid_times - now_ts)))
 
     if abs(valid_times[i_time] - now_ts) > 5400:   # >90 min → brak dopasowania
@@ -572,7 +572,7 @@ def _gfs_environment(
 
     i_lat  = int(np.argmin(np.abs(lats - lat)))
     i_lon  = int(np.argmin(np.abs(lons - lon)))
-    now_ts = now_dt.timestamp()
+    now_ts = now_dt.replace(tzinfo=timezone.utc).timestamp()
     i_time = int(np.argmin(np.abs(valid_times - now_ts)))
 
     if abs(valid_times[i_time] - now_ts) > 5400:
