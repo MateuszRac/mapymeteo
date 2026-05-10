@@ -42,6 +42,7 @@ OUTPUT_JSON       = PROJECT_PATH / "img" / "polrad" / "lightning.json"
 LOG_DIR           = PROJECT_PATH / "logs"
 WATCH_POINTS_FILE = ROOT / "config" / "watch_points.json"
 ALERT_STATE_FILE  = PROJECT_PATH / "data" / "alert_state.json"
+STORM_VECTORS_DIR = PROJECT_PATH / "data" / "storm_vectors"
 ALERT_COOLDOWN_S  = 3600   # min. przerwa między alertami dla tej samej lokalizacji [s]
 
 COLLECTION_ID   = "EO:EUM:DAT:0782"
@@ -451,6 +452,84 @@ def _estimate_velocity(
     return dlat, dlon, round(speed_kmh)
 
 
+_SV_MAX_AGE_H = 12   # odrzuć dane GFS starsze niż tyle godzin
+
+
+def _load_storm_vectors() -> dict | None:
+    """Wczytuje najnowszy plik storm_vectors_*.npz, jeśli jest wystarczająco świeży."""
+    if not STORM_VECTORS_DIR.exists():
+        return None
+    files = sorted(STORM_VECTORS_DIR.glob("storm_vectors_*.npz"))
+    if not files:
+        return None
+    latest = files[-1]
+    try:
+        sv      = np.load(str(latest))
+        init_ts = float(sv["init_time"][0])
+        age_h   = (datetime.now(timezone.utc).timestamp() - init_ts) / 3600
+        if age_h > _SV_MAX_AGE_H:
+            log.info("Storm vectors za stare (%.1f h), używam centroidów", age_h)
+            return None
+        log.debug("Storm vectors: %s (wiek %.1f h)", latest.name, age_h)
+        return dict(sv)
+    except Exception as exc:
+        log.warning("Błąd wczytywania storm vectors: %s", exc)
+        return None
+
+
+def _gfs_motion(
+    sv: dict | None, center_km: np.ndarray, now_dt: datetime
+) -> tuple[float, float, float] | None:
+    """Zwraca (dlat, dlon, speed_kmh) z GFS USTM/VSTM lub None gdy brak danych.
+
+    Wybiera najbliższy punkt siatki GFS i najbliższy krok czasowy do now_dt.
+    Odrzuca dane, jeśli centroid leży poza obszarem GFS lub czas jest >90 min
+    od najbliższego kroku prognozy.
+    """
+    if sv is None:
+        return None
+
+    lat = float(center_km[0]) / _KM_PER_LAT
+    lon = float(center_km[1]) / _KM_PER_LON
+
+    lats        = sv["lats"]
+    lons        = sv["lons"]
+    valid_times = sv["valid_times"]
+
+    if lat < float(lats.min()) or lat > float(lats.max()):
+        return None
+    if lon < float(lons.min()) or lon > float(lons.max()):
+        return None
+
+    i_lat  = int(np.argmin(np.abs(lats - lat)))
+    i_lon  = int(np.argmin(np.abs(lons - lon)))
+    now_ts = now_dt.timestamp()
+    i_time = int(np.argmin(np.abs(valid_times - now_ts)))
+
+    if abs(valid_times[i_time] - now_ts) > 5400:   # >90 min → brak dopasowania
+        return None
+
+    u_ms = float(sv["ustm"][i_time, i_lat, i_lon])
+    v_ms = float(sv["vstm"][i_time, i_lat, i_lon])
+
+    if not (math.isfinite(u_ms) and math.isfinite(v_ms)):
+        return None
+
+    vel_x_kmh = u_ms * 3.6
+    vel_y_kmh = v_ms * 3.6
+    speed_kmh = math.sqrt(vel_x_kmh ** 2 + vel_y_kmh ** 2)
+
+    if speed_kmh > FORECAST_MAX_KMH:
+        scale      = FORECAST_MAX_KMH / speed_kmh
+        vel_x_kmh *= scale
+        vel_y_kmh *= scale
+        speed_kmh  = FORECAST_MAX_KMH
+
+    dlat = vel_y_kmh * FORECAST_AHEAD_H / _KM_PER_LAT
+    dlon = vel_x_kmh * FORECAST_AHEAD_H / _KM_PER_LON
+    return dlat, dlon, round(speed_kmh)
+
+
 def _compute_forecast(slots: dict, now: datetime) -> dict | None:
     """Klasteryzuje wyładowania (DBSCAN) i dla każdego klastra liczy prognozę.
 
@@ -488,6 +567,7 @@ def _compute_forecast(slots: dict, now: datetime) -> dict | None:
     if len(recent_deg) < FORECAST_MIN_CLUSTER:
         return None
 
+    sv       = _load_storm_vectors()
     pts_deg  = np.array(recent_deg)
     pts_km   = _to_km(pts_deg)
     pts_n    = np.array(recent_n,  dtype=int)
@@ -507,9 +587,17 @@ def _compute_forecast(slots: dict, now: datetime) -> dict | None:
         if len(cl_km) < FORECAST_MIN_CLUSTER:
             continue
 
-        center_km             = cl_km.mean(axis=0)
-        center_deg            = cl_deg.mean(axis=0)
-        dlat, dlon, speed_kmh = _estimate_velocity(bins_by_t, center_km)
+        center_km  = cl_km.mean(axis=0)
+        center_deg = cl_deg.mean(axis=0)
+
+        gfs = _gfs_motion(sv, center_km, now_naive)
+        if gfs is not None:
+            dlat, dlon, speed_kmh = gfs
+            motion_source = "gfs"
+            log.debug("Klaster %d: GFS %.1f km/h", cid, speed_kmh)
+        else:
+            dlat, dlon, speed_kmh = _estimate_velocity(bins_by_t, center_km)
+            motion_source = "lightning"
 
         # Kierunek ruchu (0° = N, zgodnie z ruchem wskazówek zegara)
         dy_km         = dlat * _KM_PER_LAT
@@ -555,6 +643,7 @@ def _compute_forecast(slots: dict, now: datetime) -> dict | None:
         clusters_out.append({
             "polygon":           [[round(float(p[0]), 4), round(float(p[1]), 4)] for p in poly_deg],
             "cluster_type":      cluster_type,
+            "motion_source":     motion_source,
             "speed_kmh":         speed_kmh,
             "direction_deg":     dir_deg,
             "direction_compass": dir_compass,
