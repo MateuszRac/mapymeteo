@@ -54,8 +54,8 @@ _FLOW_MAX_ECHO_KM = 50.0   # maks. odległość klastra od echa, powyżej które
 ALERT_COOLDOWN_S  = 3600   # min. przerwa między alertami dla tej samej lokalizacji [s]
 
 COLLECTION_ID   = "EO:EUM:DAT:0782"
-LON_MIN, LON_MAX = 10.0, 30.0
-LAT_MIN, LAT_MAX = 40.0, 60.0
+LON_MIN, LON_MAX =  9.77, 27.03
+LAT_MIN, LAT_MAX = 47.56, 57.48
 SLOT_MINUTES    = 10
 FTP_REMOTE_DIR  = os.getenv("FTP_REMOTE_IMG_DIR", "img")
 

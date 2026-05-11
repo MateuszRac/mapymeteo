@@ -27,7 +27,7 @@ export function initMap() {
     zoom: MAP_ZOOM,
     zoomControl: true,
     minZoom: 5,
-    maxBounds: [[37, 5], [63, 35]],
+    maxBounds: [[47.56, 9.77], [57.48, 27.03]],
     maxBoundsViscosity: 1.0,
   });
 
