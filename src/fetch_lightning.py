@@ -543,30 +543,40 @@ def _to_deg(pts_km: np.ndarray) -> np.ndarray:
 
 
 def _dbscan(pts_km: np.ndarray, eps_km: float, min_samples: int) -> np.ndarray:
-    """DBSCAN w czystym numpy, odległości w km. Zwraca etykiety (-1 = szum)."""
-    n       = len(pts_km)
-    labels  = np.full(n, -1, dtype=int)
+    """DBSCAN z KD-tree (O(n log n) pamięć). Zwraca etykiety (-1 = szum)."""
+    try:
+        from sklearn.cluster import DBSCAN as _DBSCAN
+        return _DBSCAN(eps=eps_km, min_samples=min_samples,
+                       algorithm="ball_tree", metric="euclidean",
+                       n_jobs=1).fit(pts_km).labels_
+    except ImportError:
+        pass
+
+    # Fallback bez sklearn — KD-tree z scipy
+    from scipy.spatial import cKDTree
+    tree   = cKDTree(pts_km)
+    n      = len(pts_km)
+    labels = np.full(n, -1, dtype=int)
+    cid    = 0
     visited = np.zeros(n, dtype=bool)
-    dists   = np.sqrt(((pts_km[:, None] - pts_km[None, :]) ** 2).sum(axis=2))
-    cid     = 0
 
     for i in range(n):
         if visited[i]:
             continue
         visited[i] = True
-        nbrs = np.where(dists[i] <= eps_km)[0]
+        nbrs = tree.query_ball_point(pts_km[i], eps_km)
         if len(nbrs) < min_samples:
             continue
         labels[i] = cid
-        seeds = set(nbrs.tolist())
+        seeds = set(nbrs)
         seeds.discard(i)
         while seeds:
             q = seeds.pop()
             if not visited[q]:
                 visited[q] = True
-                q_nbrs = np.where(dists[q] <= eps_km)[0]
+                q_nbrs = tree.query_ball_point(pts_km[q], eps_km)
                 if len(q_nbrs) >= min_samples:
-                    seeds.update(q_nbrs.tolist())
+                    seeds.update(q_nbrs)
             if labels[q] == -1:
                 labels[q] = cid
         cid += 1

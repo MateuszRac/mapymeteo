@@ -82,8 +82,8 @@ function _buildPopup(cl) {
       <tr><td colspan="2" class="fc-sep"></td></tr>
       <tr><td>Wyładowania (10 min)</td><td>${s.count_10min ?? '—'}</td></tr>
       <tr><td>Pole klastra</td><td>${s.area_km2 != null ? s.area_km2 + ' km²' : '—'}</td></tr>
-      <tr><td>Gęstość</td><td>${s.density_km2 != null ? s.density_km2 + ' /km²' : '—'}</td></tr>
-      <tr><td>Maks. gęstość</td><td>${s.max_density_km2 != null ? s.max_density_km2 + ' /km²' : '—'}</td></tr>
+      <tr><td>Gęstość</td><td>${s.density_km2 != null ? s.density_km2.toFixed(1) + ' /km²' : '—'}</td></tr>
+      <tr><td>Maks. gęstość</td><td>${s.max_density_km2 != null ? s.max_density_km2.toFixed(1) + ' /km²' : '—'}</td></tr>
       ${dbzSep}${dbzRow}
       ${envSep}
       ${envTime}${capeRow}${shearRow}${wmsRow}
