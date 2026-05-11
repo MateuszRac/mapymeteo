@@ -313,16 +313,31 @@ def _load_cmax() -> dict | None:
     Zwraca None gdy brak pliku lub najnowsza klatka jest za stara.
     """
     if not _CMAX_CACHE_PATH.exists():
+        log.debug("CMAX cache: brak pliku %s", _CMAX_CACHE_PATH)
         return None
     try:
         import time
         c = np.load(_CMAX_CACHE_PATH)
-        # Obsługuje nowy format (timestamps) i stary (timestamp)
-        ts_arr = c["timestamps"] if "timestamps" in c else c["timestamp"]
-        if time.time() - float(ts_arr[-1]) > _CMAX_MAX_AGE_S:
+        # Normalizuj klucz timestamps (stary format: 'timestamp' bez 's')
+        if "timestamps" in c.files:
+            ts_arr = c["timestamps"]
+        elif "timestamp" in c.files:
+            ts_arr = c["timestamp"]
+        else:
+            log.warning("CMAX cache: brak klucza timestamps/timestamp, pliki: %s", c.files)
             return None
-        return c
-    except Exception:
+        age_s = time.time() - float(ts_arr[-1])
+        if age_s > _CMAX_MAX_AGE_S:
+            log.debug("CMAX cache: za stary (%.0f s > %d s)", age_s, _CMAX_MAX_AGE_S)
+            return None
+        # Konwertuj do zwykłego dict i normalizuj klucz timestamps
+        result = {k: c[k] for k in c.files}
+        result["timestamps"] = ts_arr   # gwarantuje klucz 'timestamps' niezależnie od formatu
+        n_frames = result["dbz"].shape[0] if result["dbz"].ndim == 3 else 1
+        log.debug("CMAX cache: załadowano %d klatek, wiek %.0f s", n_frames, age_s)
+        return result
+    except Exception as exc:
+        log.warning("CMAX cache: błąd ładowania: %s", exc)
         return None
 
 
@@ -396,27 +411,35 @@ def _radar_motion(
     Zwraca (dlat, dlon, speed_kmh) lub None gdy dane niewystarczające.
     """
     if cmax is None:
+        log.debug("OF: brak danych CMAX")
         return None
     try:
         import cv2
     except ImportError:
-        log.debug("cv2 niedostępne — pomijam radar optical flow")
+        log.debug("OF: cv2 niedostępne — pomijam radar optical flow")
         return None
-    from scipy.ndimage import gaussian_filter  # noqa: F401 (needed inside _fill_flow)
 
     dbz_raw    = cmax.get("dbz")
     timestamps = cmax.get("timestamps")
-    lats       = cmax["lats"]   # (H, W)
-    lons       = cmax["lons"]   # (H, W)
+    lats       = cmax.get("lats")
+    lons       = cmax.get("lons")
 
-    if dbz_raw is None or timestamps is None:
+    if dbz_raw is None or timestamps is None or lats is None or lons is None:
+        log.warning("OF: brak kluczy w CMAX cache (dbz=%s, timestamps=%s, lats=%s, lons=%s)",
+                    dbz_raw is not None, timestamps is not None,
+                    lats is not None, lons is not None)
         return None
     dbz_stack = dbz_raw if dbz_raw.ndim == 3 else dbz_raw[np.newaxis]
     if len(dbz_stack) < 2:
+        log.debug("OF: za mało klatek w stacku (%d < 2)", len(dbz_stack))
         return None
 
     # Próbkowanie do ~_FLOW_TARGET_KM rozdzielczości
     dpix_km = abs(float(lats[0, 0] - lats[1, 0])) * _KM_PER_LAT
+    if dpix_km < 1e-6:
+        log.warning("OF: nieprawidłowy dpix_km=%.6f (lats[0,0]=%.4f, lats[1,0]=%.4f)",
+                    dpix_km, lats[0, 0], lats[1, 0])
+        return None
     step    = max(1, round(_FLOW_TARGET_KM / dpix_km))
 
     lats_ds     = lats[::step, ::step]
@@ -424,6 +447,10 @@ def _radar_motion(
     dpix_lat_km = abs(float(lats_ds[0, 0] - lats_ds[1, 0])) * _KM_PER_LAT
     dpix_lon_km = abs(float(lons_ds[0, 1] - lons_ds[0, 0])) * _KM_PER_LON
     sigma_px    = _FLOW_SIGMA_KM / ((dpix_lat_km + dpix_lon_km) / 2.0)
+
+    log.debug("OF: siatka %dx%d → %dx%d (step=%d, dpix=%.2f km, σ=%.0f px)",
+              lats.shape[0], lats.shape[1], lats_ds.shape[0], lats_ds.shape[1],
+              step, dpix_km, sigma_px)
 
     H, W = lats_ds.shape
     sum_u = np.zeros((H, W), dtype=np.float32)
@@ -436,11 +463,19 @@ def _radar_motion(
 
     for i in range(len(dbz_stack) - 1):
         dt_s = float(timestamps[i + 1] - timestamps[i])
-        if not (0 < dt_s <= 900):   # odrzuć pary >15 min lub cofnięte w czasie
+        if not (0 < dt_s <= 900):
+            log.debug("OF: para %d-%d odrzucona (dt_s=%.0f)", i, i + 1, dt_s)
             continue
 
         f1 = _to_u8(dbz_stack[i    ][::step, ::step])
         f2 = _to_u8(dbz_stack[i + 1][::step, ::step])
+
+        has_echo_f1 = np.nan_to_num(dbz_stack[i    ][::step, ::step], nan=0.0) >= _FLOW_ECHO_THR
+        has_echo_f2 = np.nan_to_num(dbz_stack[i + 1][::step, ::step], nan=0.0) >= _FLOW_ECHO_THR
+        has_echo    = has_echo_f1 | has_echo_f2
+        echo_px     = int(has_echo.sum())
+        log.debug("OF: para %d-%d: dt=%.0fs, echo_px=%d/%d",
+                  i, i + 1, dt_s, echo_px, H * W)
 
         flow = cv2.calcOpticalFlowFarneback(
             f1, f2, None,
@@ -452,21 +487,21 @@ def _radar_motion(
         u_kmh  =  flow[..., 0] * dpix_lon_km / dt_h
         v_kmh  = -flow[..., 1] * dpix_lat_km / dt_h
 
-        # Ważymy tylko piksele z echem (dBZ > próg) w co najmniej jednej klatce
-        has_echo = (np.nan_to_num(dbz_stack[i    ][::step, ::step], nan=0.0) >= _FLOW_ECHO_THR) | \
-                   (np.nan_to_num(dbz_stack[i + 1][::step, ::step], nan=0.0) >= _FLOW_ECHO_THR)
         w = has_echo.astype(np.float32) * float(i + 1)  # nowsze pary → wyższa waga
-
         sum_u  += u_kmh * w
         sum_v  += v_kmh * w
         sum_w  += w
         n_pairs += 1
 
     if n_pairs == 0:
+        log.debug("OF: brak prawidłowych par klatek")
         return None
 
     raw_u = np.where(sum_w > 0, sum_u / sum_w, np.nan)
     raw_v = np.where(sum_w > 0, sum_v / sum_w, np.nan)
+
+    valid_px = int(np.isfinite(raw_u).sum())
+    log.debug("OF: ważone piksele z echem: %d/%d", valid_px, H * W)
 
     u_field = _fill_flow(raw_u, sigma_px)
     v_field = _fill_flow(raw_v, sigma_px)
@@ -477,22 +512,32 @@ def _radar_motion(
     dist2_km2  = ((lats_ds - center_lat) * _KM_PER_LAT) ** 2 + \
                  ((lons_ds - center_lon) * _KM_PER_LON) ** 2
     i_row, i_col = np.unravel_index(int(np.argmin(dist2_km2)), dist2_km2.shape)
+    nearest_km   = float(np.sqrt(dist2_km2[i_row, i_col]))
 
-    if float(np.sqrt(dist2_km2[i_row, i_col])) > _FLOW_MAX_ECHO_KM:
-        return None   # klaster poza zasięgiem siatki radarowej
+    if nearest_km > _FLOW_MAX_ECHO_KM:
+        log.debug("OF: klaster poza siatką (%.1f km > %.1f km)", nearest_km, _FLOW_MAX_ECHO_KM)
+        return None
 
     # Sprawdź czy klaster leży blisko rzeczywistego echa (nie tylko wypełnionego pola)
-    echo_last = np.nan_to_num(dbz_stack[-1][::step, ::step], nan=0.0)
+    echo_last  = np.nan_to_num(dbz_stack[-1][::step, ::step], nan=0.0)
     echo_dist2 = np.where(echo_last >= _FLOW_ECHO_THR, dist2_km2, np.inf)
-    if float(np.sqrt(float(echo_dist2.min()))) > _FLOW_SIGMA_KM * 2:
-        return None   # brak echa w pobliżu — wypełnione pole OF niewiarygodne
+    echo_nearest_km = float(np.sqrt(float(echo_dist2.min())))
+    echo_thr_km     = _FLOW_SIGMA_KM * 2
+    if echo_nearest_km > echo_thr_km:
+        log.debug("OF: brak echa w pobliżu klastra (%.1f km > %.1f km)",
+                  echo_nearest_km, echo_thr_km)
+        return None
 
     u_kmh_c = float(u_field[i_row, i_col])
     v_kmh_c = float(v_field[i_row, i_col])
     speed_kmh = math.sqrt(u_kmh_c ** 2 + v_kmh_c ** 2)
 
+    log.debug("OF: u=%.1f km/h, v=%.1f km/h → speed=%.1f km/h (klaster @ %.1f km od siatki, %.1f km od echa)",
+              u_kmh_c, v_kmh_c, speed_kmh, nearest_km, echo_nearest_km)
+
     if speed_kmh < 1.0:
-        return None   # prawdopodobnie szum
+        log.debug("OF: prędkość %.1f km/h < 1 km/h (szum)", speed_kmh)
+        return None
     if speed_kmh > FORECAST_MAX_KMH:
         scale      = FORECAST_MAX_KMH / speed_kmh
         u_kmh_c   *= scale
@@ -501,6 +546,7 @@ def _radar_motion(
 
     dlat = v_kmh_c * FORECAST_AHEAD_H / _KM_PER_LAT
     dlon = u_kmh_c * FORECAST_AHEAD_H / _KM_PER_LON
+    log.debug("OF: wynik dlat=%.4f, dlon=%.4f, speed=%d km/h", dlat, dlon, round(speed_kmh))
     return dlat, dlon, round(speed_kmh)
 
 
