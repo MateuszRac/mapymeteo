@@ -890,19 +890,16 @@ def _compute_forecast(slots: dict, now: datetime) -> dict | None:
         center_km  = cl_km.mean(axis=0)
         center_deg = cl_deg.mean(axis=0)
 
-        # Priorytet źródła ruchu: radar OF → historia wyładowań → GFS → historia (niepewna)
+        # Priorytet źródła ruchu: radar OF → GFS
+        # (historia wyładowań tymczasowo wyłączona)
         radar = _radar_motion(cmax, center_km)
-        dlat, dlon, speed_kmh, hist_ok = _estimate_velocity(bins_by_t, center_km)
+        dlat = dlon = speed_kmh = 0
 
         if radar is not None:
             dlat, dlon, speed_kmh = radar
             motion_source = "radar"
             motion_label  = "radar CMAX"
             log.debug("Klaster %d: radar OF %.1f km/h", cid, speed_kmh)
-        elif hist_ok:
-            motion_source = "lightning"
-            motion_label  = "historia wyładowań"
-            log.debug("Klaster %d: historia %.1f km/h", cid, speed_kmh)
         else:
             gfs = _gfs_motion(sv, center_km, now_naive)
             if gfs is not None:
@@ -912,9 +909,9 @@ def _compute_forecast(slots: dict, now: datetime) -> dict | None:
                 motion_label = f"GFS {gfs_run.strftime('%Y%m%d %HZ')}"
                 log.debug("Klaster %d: GFS %.1f km/h", cid, speed_kmh)
             else:
-                motion_source = "lightning"
-                motion_label  = "estymacja z historii wyładowań (niepewna)"
-                log.debug("Klaster %d: historia niepewna, brak GFS — %.1f km/h", cid, speed_kmh)
+                motion_source = "brak"
+                motion_label  = "brak danych ruchu"
+                log.debug("Klaster %d: brak OF i GFS", cid)
 
         # Kierunek ruchu (0° = N, zgodnie z ruchem wskazówek zegara)
         dy_km       = dlat * _KM_PER_LAT
