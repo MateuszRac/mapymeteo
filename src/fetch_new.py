@@ -68,6 +68,58 @@ _radar_renderer = RadarRenderer(palette=RadarPalette(pal_dir=COLOR_TABLES))
 
 log = logging.getLogger(__name__)
 
+_CMAX_CACHE_PATH   = PROJECT_PATH / "data" / "cmax" / "cmax_latest.npz"
+_CMAX_STACK_FRAMES = 5
+
+
+def _save_cmax_cache(radar_data: dict, product_key: str) -> None:
+    """Zapisuje rolling stack N klatek CMAX [dBZ] jako NPZ dla optical flow."""
+    try:
+        import numpy as np
+        from datetime import timezone
+        from pyproj import Transformer
+
+        cache_dir = _CMAX_CACHE_PATH.parent
+        cache_dir.mkdir(parents=True, exist_ok=True)
+
+        t = Transformer.from_crs("EPSG:3857", "EPSG:4326", always_xy=True)
+        lon_mesh, lat_mesh = t.transform(radar_data["lon_mesh"], radar_data["lat_mesh"])
+        lat_c = ((lat_mesh[:-1, :-1] + lat_mesh[1:, 1:]) / 2).astype(np.float32)
+        lon_c = ((lon_mesh[:-1, :-1] + lon_mesh[1:, 1:]) / 2).astype(np.float32)
+
+        ds_name = next(iter(radar_data["radar_data"]))
+        dbz_new = radar_data["radar_data"][ds_name].astype(np.float32)
+        ts_new  = radar_data["start_date"].replace(tzinfo=timezone.utc).timestamp()
+
+        dbz_list: list = []
+        ts_list:  list = []
+        if _CMAX_CACHE_PATH.exists():
+            try:
+                old = np.load(_CMAX_CACHE_PATH)
+                if old["lats"].shape == lat_c.shape:
+                    ts_key   = "timestamps" if "timestamps" in old.files else "timestamp"
+                    dbz_list = list(old["dbz"])
+                    ts_list  = [float(x) for x in old[ts_key]]
+            except Exception:
+                pass
+
+        dbz_list.append(dbz_new)
+        ts_list.append(ts_new)
+        dbz_list = dbz_list[-_CMAX_STACK_FRAMES:]
+        ts_list  = ts_list [-_CMAX_STACK_FRAMES:]
+
+        np.savez_compressed(
+            _CMAX_CACHE_PATH,
+            lats=lat_c, lons=lon_c,
+            dbz=np.array(dbz_list, dtype=np.float32),
+            timestamps=np.array(ts_list, dtype=np.float64),
+        )
+        log.info("[%s] Cache CMAX: %d/%d klatek (%dx%d)", product_key,
+                 len(dbz_list), _CMAX_STACK_FRAMES,
+                 dbz_new.shape[0], dbz_new.shape[1])
+    except Exception as exc:
+        log.warning("[%s] Nie udało się zapisać cache CMAX: %s", product_key, exc)
+
 
 # ─────────────────────────────────────────────────────────
 #  Konfiguracja
@@ -290,6 +342,9 @@ def process_path(path_info, cfg, manifest, manifest_lock, ftp_uploader=None, max
                 with open(json_path, "w", encoding="utf-8") as _jf:
                     json.dump(frame_meta, _jf, ensure_ascii=False, indent=2)
                 log.info("[%s] Wygenerowano: %s.png", product_key, ts_str)
+
+                if "CMAX" in product_key:
+                    _save_cmax_cache(radar_data, product_key)
 
                 image_rel = "../" + str(png_path.relative_to(PROJECT_PATH)).replace("\\", "/")
                 with manifest_lock:
