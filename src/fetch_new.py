@@ -68,8 +68,9 @@ _radar_renderer = RadarRenderer(palette=RadarPalette(pal_dir=COLOR_TABLES))
 
 log = logging.getLogger(__name__)
 
-_CMAX_CACHE_PATH   = PROJECT_PATH / "data" / "cmax" / "cmax_latest.npz"
-_CMAX_STACK_FRAMES = 5
+_CMAX_CACHE_PATH    = PROJECT_PATH / "data" / "cmax" / "cmax_latest.npz"
+_CMAX_STACK_FRAMES  = 5
+CMAX_FORECAST_LEAD_H = 2
 
 
 def _save_cmax_cache(radar_data: dict, product_key: str) -> None:
@@ -119,6 +120,162 @@ def _save_cmax_cache(radar_data: dict, product_key: str) -> None:
                  dbz_new.shape[0], dbz_new.shape[1])
     except Exception as exc:
         log.warning("[%s] Nie udało się zapisać cache CMAX: %s", product_key, exc)
+
+
+def _compute_cmax_forecast(radar_data: dict, product_key: str, label: str,
+                            manifest: dict, manifest_lock,
+                            ftp_session=None) -> None:
+    """Generuje prognozę CMAX +2h metodą optical flow i dodaje do manifestu."""
+    try:
+        import numpy as np
+        import cv2
+        from scipy.ndimage import map_coordinates, gaussian_filter
+        import time as _time
+
+        if not _CMAX_CACHE_PATH.exists():
+            return
+        c = np.load(_CMAX_CACHE_PATH)
+        dbz_stack = c["dbz"]
+        ts_key    = "timestamps" if "timestamps" in c.files else "timestamp"
+        timestamps = c[ts_key]
+        lats = c["lats"]
+        lons = c["lons"]
+
+        if dbz_stack.ndim != 3 or len(dbz_stack) < 2:
+            log.debug("CMAX forecast: za mało klatek (%d)", len(dbz_stack) if dbz_stack.ndim == 3 else 1)
+            return
+        if _time.time() - float(timestamps[-1]) > 25 * 60:
+            log.debug("CMAX forecast: cache za stary")
+            return
+
+        H, W = lats.shape
+        dpix_lat_km = abs(float(lats[0, 0] - lats[1, 0])) * 111.32
+        dpix_lon_km = abs(float(lons[0, 1] - lons[0, 0])) * 111.32 * float(np.cos(np.radians(float(lats.mean()))))
+        sigma_px    = 30.0 / ((dpix_lat_km + dpix_lon_km) / 2.0)
+
+        # ── Optical flow na parach klatek ─────────────────────────────────
+        sum_u = np.zeros((H, W), dtype=np.float32)
+        sum_v = np.zeros((H, W), dtype=np.float32)
+        sum_w = np.zeros((H, W), dtype=np.float32)
+        n_pairs = 0
+
+        def _to_u8(arr):
+            return np.clip(np.nan_to_num(arr, nan=0.0) / 65.0 * 255, 0, 255).astype(np.uint8)
+
+        for i in range(len(dbz_stack) - 1):
+            dt_s = float(timestamps[i + 1] - timestamps[i])
+            if not (0 < dt_s <= 900):
+                continue
+            flow = cv2.calcOpticalFlowFarneback(
+                _to_u8(dbz_stack[i]), _to_u8(dbz_stack[i + 1]), None,
+                0.5, 5, 25, 3, 7, 1.5, 0,
+            )
+            dt_h  = dt_s / 3600.0
+            u_kmh = flow[..., 0] * dpix_lon_km / dt_h
+            v_kmh = flow[..., 1] * dpix_lat_km / dt_h  # row0=południe → row+=północ
+            has_echo = (
+                (np.nan_to_num(dbz_stack[i    ], nan=0.0) >= 10.0) |
+                (np.nan_to_num(dbz_stack[i + 1], nan=0.0) >= 10.0)
+            )
+            w = has_echo.astype(np.float32) * float(i + 1)
+            sum_u += u_kmh * w
+            sum_v += v_kmh * w
+            sum_w += w
+            n_pairs += 1
+
+        if n_pairs == 0:
+            return
+
+        # ── Gaussian splatting: wypełnij obszary bez echa ─────────────────
+        def _fill(field):
+            valid = np.isfinite(field)
+            f  = np.where(valid, field, 0.0).astype(np.float32)
+            wf = valid.astype(np.float32)
+            fs = gaussian_filter(f,  sigma_px)
+            ws = gaussian_filter(wf, sigma_px)
+            return np.where(ws > 0.01, fs / ws, 0.0).astype(np.float32)
+
+        raw_u = np.where(sum_w > 0, sum_u / sum_w, np.nan)
+        raw_v = np.where(sum_w > 0, sum_v / sum_w, np.nan)
+        u_field = _fill(raw_u)
+        v_field = _fill(raw_v)
+
+        # ── Adwekcja wsteczna (semi-Lagrangian) +2h ───────────────────────
+        u_px = u_field * CMAX_FORECAST_LEAD_H / dpix_lon_km
+        v_px = v_field * CMAX_FORECAST_LEAD_H / dpix_lat_km
+
+        row_idx = np.arange(H, dtype=np.float32)[:, np.newaxis] * np.ones((1, W), dtype=np.float32)
+        col_idx = np.ones((H, 1), dtype=np.float32) * np.arange(W, dtype=np.float32)[np.newaxis, :]
+
+        dbz_last     = np.nan_to_num(dbz_stack[-1], nan=0.0).astype(np.float32)
+        forecast_dbz = map_coordinates(
+            dbz_last,
+            [(row_idx - v_px).ravel(), (col_idx - u_px).ravel()],
+            order=1, mode="constant", cval=0.0,
+        ).reshape(H, W).astype(np.float32)
+        forecast_dbz  = np.clip(forecast_dbz, 0, None)
+        forecast_dbz[forecast_dbz < 1.0] = np.nan   # transparentne obszary bez echa
+
+        # ── Czas ważności i ścieżki ───────────────────────────────────────
+        valid_ts = float(timestamps[-1]) + CMAX_FORECAST_LEAD_H * 3600.0
+        valid_dt = datetime.utcfromtimestamp(valid_ts)
+        ts_str   = valid_dt.strftime("%Y%m%d%H%M%S")
+
+        overlay_dir = OVERLAY_DIR / product_key
+
+        # Usuń stare pliki prognozy
+        for old_f in list(overlay_dir.glob("forecast_*.png")) + list(overlay_dir.glob("forecast_*.json")):
+            old_f.unlink(missing_ok=True)
+            if ftp_session:
+                try:
+                    ftp_session.delete(_to_remote(old_f))
+                except Exception:
+                    pass
+
+        png_path  = overlay_dir / f"forecast_{ts_str}.png"
+        json_path = overlay_dir / f"forecast_{ts_str}.json"
+
+        # ── Renderowanie — syntetyczny radar_data z prognozowanym dBZ ─────
+        forecast_rd = {
+            **radar_data,
+            "radar_data": {"dataset1": forecast_dbz},
+            "start_date": valid_dt,
+        }
+        frame_meta = _radar_renderer.render_overlay(forecast_rd, str(png_path), style="noaa")
+        frame_meta["is_forecast"]      = True
+        frame_meta["forecast_lead_h"]  = CMAX_FORECAST_LEAD_H
+
+        with open(json_path, "w", encoding="utf-8") as jf:
+            json.dump(frame_meta, jf, ensure_ascii=False, indent=2)
+
+        log.info("[%s] Prognoza CMAX +%dh: forecast_%s.png", product_key, CMAX_FORECAST_LEAD_H, ts_str)
+
+        # ── Manifest ──────────────────────────────────────────────────────
+        image_rel = "../" + str(png_path.relative_to(PROJECT_PATH)).replace("\\", "/")
+        with manifest_lock:
+            if product_key not in manifest.get("products", {}):
+                manifest.setdefault("products", {})[product_key] = {"label": label, "frames": []}
+            frames = manifest["products"][product_key]["frames"]
+            # Usuń poprzednie klatki prognozy
+            manifest["products"][product_key]["frames"] = [f for f in frames if not f.get("is_forecast")]
+            manifest["products"][product_key]["frames"].append({
+                "timestamp":       frame_meta["timestamp"],
+                "image":           image_rel,
+                "bounds":          frame_meta["bounds"],
+                "quantity":        frame_meta["quantity"],
+                "is_forecast":     True,
+                "forecast_lead_h": CMAX_FORECAST_LEAD_H,
+            })
+            manifest["products"][product_key]["frames"].sort(key=lambda f: f["timestamp"])
+
+        if ftp_session:
+            ftp_session.upload(png_path,  _to_remote(png_path))
+            ftp_session.upload(json_path, _to_remote(json_path))
+
+    except Exception as exc:
+        import traceback
+        log.warning("CMAX forecast: błąd: %s", exc)
+        log.debug("CMAX forecast traceback:\n%s", traceback.format_exc())
 
 
 # ─────────────────────────────────────────────────────────
@@ -345,6 +502,8 @@ def process_path(path_info, cfg, manifest, manifest_lock, ftp_uploader=None, max
 
                 if "CMAX" in product_key:
                     _save_cmax_cache(radar_data, product_key)
+                    _compute_cmax_forecast(radar_data, product_key, label,
+                                           manifest, manifest_lock, ftp_session)
 
                 image_rel = "../" + str(png_path.relative_to(PROJECT_PATH)).replace("\\", "/")
                 with manifest_lock:

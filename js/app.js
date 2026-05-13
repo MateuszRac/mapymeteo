@@ -23,6 +23,7 @@ const btnProductToggle = document.getElementById('btn-product-toggle');
 const loadingEl        = document.getElementById('loading');
 const timeClock        = document.getElementById('time-clock');
 const timeDate         = document.getElementById('time-date');
+const forecastBadge    = document.getElementById('forecast-badge');
 const sidePanel        = document.getElementById('side-panel');
 const spTitle          = document.getElementById('sp-title');
 const spInfoName       = document.getElementById('sp-info-name');
@@ -73,15 +74,19 @@ async function init() {
         const _p = selKey ? parseKey(selKey) : null;
         const isRect = _p ? (_p.isCompo || _p.isGrs) : false;
         showFrame(map, frame, parseInt(opacitySl.value, 10) / 100, true, isRect);
-        updateTimeDisplay(frame.timestamp);
+        updateTimeDisplay(frame.timestamp, frame.is_forecast ?? false);
         updateColorbar(frame.quantity ?? (selKey ? parseKey(selKey).unit : null));
-        const { missing } = renderLightning(frame.timestamp);
-        setLightningWarning(missing);
+        if (!frame.is_forecast) {
+          const { missing } = renderLightning(frame.timestamp);
+          setLightningWarning(missing);
+        } else {
+          setLightningWarning(false);
+        }
       },
       onClear: () => {
         clearOverlay();
         clearCoverageMask();
-        updateTimeDisplay(null);
+        updateTimeDisplay(null, false);
         renderLightning(null);
         setLightningWarning(false);
       },
@@ -108,15 +113,21 @@ async function init() {
 }
 
 // ── Czas UTC → Warszawa ───────────────────────────────────────────────────────
-function updateTimeDisplay(isoStr) {
+function updateTimeDisplay(isoStr, isForecast = false) {
   if (!isoStr) {
     timeClock.textContent = '--:--';
     timeDate.textContent  = '--.--.----';
+    forecastBadge?.classList.add('hidden');
     return;
   }
   const dt = new Date(isoStr.includes('Z') ? isoStr : isoStr + 'Z');
   timeClock.textContent = dt.toLocaleTimeString('pl-PL', { timeZone: 'Europe/Warsaw', hour: '2-digit', minute: '2-digit' });
   timeDate.textContent  = dt.toLocaleDateString('pl-PL',  { timeZone: 'Europe/Warsaw', day: '2-digit', month: '2-digit', year: 'numeric' });
+  if (isForecast) {
+    forecastBadge?.classList.remove('hidden');
+  } else {
+    forecastBadge?.classList.add('hidden');
+  }
 }
 
 // ── Cookies ───────────────────────────────────────────────────────────────────
