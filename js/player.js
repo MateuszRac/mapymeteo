@@ -1,20 +1,36 @@
 import { PLAY_MS, MAX_FRAMES } from './config.js?v=22';
 
 export function createPlayer({ onFrame, onClear }) {
-  let frames   = [];
-  let frameIdx = 0;
-  let timer    = null;
-  let playing  = false;
-  let playMs   = PLAY_MS;
+  let frames        = [];
+  let frameIdx      = 0;
+  let forecastStart = -1;   // index pierwszej klatki prognozy (-1 = brak)
+  let timer         = null;
+  let playing       = false;
+  let playMs        = PLAY_MS;
 
   const slider  = document.getElementById('time-slider');
   const btnPlay = document.getElementById('btn-play');
 
   function setSliderFill(idx, total) {
     if (!slider) return;
-    const pct = total <= 1 ? (total === 1 ? 100 : 0) : Math.round((idx / (total - 1)) * 100);
-    slider.style.background =
-      `linear-gradient(to right, var(--accent) ${pct}%, var(--border) ${pct}%)`;
+    const pct  = total <= 1 ? (total === 1 ? 100 : 0) : Math.round((idx  / (total - 1)) * 100);
+    const hasFc = forecastStart > 0 && forecastStart < total;
+    const fPct  = hasFc ? Math.round((forecastStart / (total - 1)) * 100) : 100;
+    const FC    = '#e07020';
+    const FC_DIM = 'rgba(224,112,32,.28)';
+
+    if (!hasFc) {
+      slider.style.background =
+        `linear-gradient(to right, var(--accent) ${pct}%, var(--border) ${pct}%)`;
+    } else if (idx < forecastStart) {
+      // w strefie danych rzeczywistych — prognoza widoczna jako pasek
+      slider.style.background =
+        `linear-gradient(to right, var(--accent) ${pct}%, var(--border) ${pct}%, var(--border) ${fPct}%, ${FC_DIM} ${fPct}%)`;
+    } else {
+      // w strefie prognozy
+      slider.style.background =
+        `linear-gradient(to right, var(--accent) ${fPct}%, ${FC} ${fPct}%, ${FC} ${pct}%, ${FC_DIM} ${pct}%)`;
+    }
   }
 
   function render() {
@@ -49,8 +65,10 @@ export function createPlayer({ onFrame, onClear }) {
   function loadFrames(newFrames) {
     const was = playing;
     stop();
-    frames   = (newFrames ?? []).slice(-MAX_FRAMES);
-    frameIdx = frames.length - 1;
+    frames        = (newFrames ?? []).slice(-MAX_FRAMES);
+    forecastStart = frames.findIndex(f => f.is_forecast);
+    // Domyślnie stajemy na ostatniej prawdziwej klatce, nie na prognozie
+    frameIdx = forecastStart > 0 ? forecastStart - 1 : frames.length - 1;
     if (slider) { slider.min = 0; slider.max = Math.max(0, frames.length - 1); slider.value = frameIdx; }
     setSliderFill(frameIdx, frames.length);
     if (frames.length) {
@@ -63,28 +81,38 @@ export function createPlayer({ onFrame, onClear }) {
   }
 
   function updateFrames(newFrames) {
-    const updated      = (newFrames ?? []).slice(-MAX_FRAMES);
+    const updated = (newFrames ?? []).slice(-MAX_FRAMES);
     if (!updated.length) return 0;
-    const curStamp     = frames[frameIdx]?.timestamp;
-    const oldLastStamp = frames[frames.length - 1]?.timestamp;
-    const wasAtLast    = frameIdx === frames.length - 1;
-    frames = updated;
+    const curStamp = frames[frameIdx]?.timestamp;
+
+    // Zapamiętaj pozycję ostatniej prawdziwej klatki (przed prognozą)
+    const oldFcStart      = frames.findIndex(f => f.is_forecast);
+    const oldLastRealIdx  = oldFcStart > 0 ? oldFcStart - 1 : frames.length - 1;
+    const oldLastRealStamp = frames[oldLastRealIdx]?.timestamp;
+    const wasAtLastReal    = frameIdx === oldLastRealIdx;
+
+    frames        = updated;
+    forecastStart = frames.findIndex(f => f.is_forecast);
     if (slider) slider.max = Math.max(0, frames.length - 1);
-    const newLastStamp = frames[frames.length - 1]?.timestamp;
-    const hasNewFrame  = newLastStamp !== oldLastStamp;
-    if (wasAtLast && hasNewFrame) {
-      frameIdx = frames.length - 1;
+
+    const newLastRealIdx   = forecastStart > 0 ? forecastStart - 1 : frames.length - 1;
+    const newLastRealStamp = frames[newLastRealIdx]?.timestamp;
+    const hasNewRealFrame  = newLastRealStamp !== oldLastRealStamp;
+
+    if (wasAtLastReal && hasNewRealFrame) {
+      // Przesuń na nową ostatnią prawdziwą klatkę
+      frameIdx = newLastRealIdx;
       if (slider) slider.value = frameIdx;
       setSliderFill(frameIdx, frames.length);
       render();
     } else {
       const restored = curStamp ? frames.findIndex(f => f.timestamp === curStamp) : -1;
-      frameIdx = restored >= 0 ? restored : frames.length - 1;
+      frameIdx = restored >= 0 ? restored : newLastRealIdx;
       if (slider) slider.value = frameIdx;
       setSliderFill(frameIdx, frames.length);
       if (!playing) render();
     }
-    return hasNewFrame ? 1 : 0;
+    return hasNewRealFrame ? 1 : 0;
   }
 
   btnPlay?.addEventListener('click', () => playing ? stop() : play());

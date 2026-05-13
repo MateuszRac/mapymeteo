@@ -68,9 +68,10 @@ _radar_renderer = RadarRenderer(palette=RadarPalette(pal_dir=COLOR_TABLES))
 
 log = logging.getLogger(__name__)
 
-_CMAX_CACHE_PATH    = PROJECT_PATH / "data" / "cmax" / "cmax_latest.npz"
-_CMAX_STACK_FRAMES  = 5
-CMAX_FORECAST_LEAD_H = 2
+_CMAX_CACHE_PATH      = PROJECT_PATH / "data" / "cmax" / "cmax_latest.npz"
+_CMAX_STACK_FRAMES    = 5
+CMAX_FORECAST_STEPS   = 24   # liczba klatek prognozy
+CMAX_FORECAST_STEP_MIN = 5   # krok prognozy [min]
 
 
 def _save_cmax_cache(radar_data: dict, product_key: str) -> None:
@@ -200,77 +201,77 @@ def _compute_cmax_forecast(radar_data: dict, product_key: str, label: str,
         u_field = _fill(raw_u)
         v_field = _fill(raw_v)
 
-        # ── Adwekcja wsteczna (semi-Lagrangian) +2h ───────────────────────
-        u_px = u_field * CMAX_FORECAST_LEAD_H / dpix_lon_km
-        v_px = v_field * CMAX_FORECAST_LEAD_H / dpix_lat_km
-
-        row_idx = np.arange(H, dtype=np.float32)[:, np.newaxis] * np.ones((1, W), dtype=np.float32)
-        col_idx = np.ones((H, 1), dtype=np.float32) * np.arange(W, dtype=np.float32)[np.newaxis, :]
-
-        dbz_last     = np.nan_to_num(dbz_stack[-1], nan=0.0).astype(np.float32)
-        forecast_dbz = map_coordinates(
-            dbz_last,
-            [(row_idx - v_px).ravel(), (col_idx - u_px).ravel()],
-            order=1, mode="constant", cval=0.0,
-        ).reshape(H, W).astype(np.float32)
-        forecast_dbz  = np.clip(forecast_dbz, 0, None)
-        forecast_dbz[forecast_dbz < 1.0] = np.nan   # transparentne obszary bez echa
-
-        # ── Czas ważności i ścieżki ───────────────────────────────────────
-        valid_ts = float(timestamps[-1]) + CMAX_FORECAST_LEAD_H * 3600.0
-        valid_dt = datetime.utcfromtimestamp(valid_ts)
-        ts_str   = valid_dt.strftime("%Y%m%d%H%M%S")
-
+        # ── Usuń stare pliki i klatki prognozy ───────────────────────────
         overlay_dir = OVERLAY_DIR / product_key
-
-        # Usuń stare pliki prognozy
         for old_f in list(overlay_dir.glob("forecast_*.png")) + list(overlay_dir.glob("forecast_*.json")):
             old_f.unlink(missing_ok=True)
             if ftp_session:
-                try:
-                    ftp_session.delete(_to_remote(old_f))
-                except Exception:
-                    pass
+                try: ftp_session.delete(_to_remote(old_f))
+                except Exception: pass
 
-        png_path  = overlay_dir / f"forecast_{ts_str}.png"
-        json_path = overlay_dir / f"forecast_{ts_str}.json"
-
-        # ── Renderowanie — syntetyczny radar_data z prognozowanym dBZ ─────
-        forecast_rd = {
-            **radar_data,
-            "radar_data": {"dataset1": forecast_dbz},
-            "start_date": valid_dt,
-        }
-        frame_meta = _radar_renderer.render_overlay(forecast_rd, str(png_path), style="noaa")
-        frame_meta["is_forecast"]      = True
-        frame_meta["forecast_lead_h"]  = CMAX_FORECAST_LEAD_H
-
-        with open(json_path, "w", encoding="utf-8") as jf:
-            json.dump(frame_meta, jf, ensure_ascii=False, indent=2)
-
-        log.info("[%s] Prognoza CMAX +%dh: forecast_%s.png", product_key, CMAX_FORECAST_LEAD_H, ts_str)
-
-        # ── Manifest ──────────────────────────────────────────────────────
-        image_rel = "../" + str(png_path.relative_to(PROJECT_PATH)).replace("\\", "/")
         with manifest_lock:
-            if product_key not in manifest.get("products", {}):
-                manifest.setdefault("products", {})[product_key] = {"label": label, "frames": []}
-            frames = manifest["products"][product_key]["frames"]
-            # Usuń poprzednie klatki prognozy
-            manifest["products"][product_key]["frames"] = [f for f in frames if not f.get("is_forecast")]
-            manifest["products"][product_key]["frames"].append({
+            if product_key in manifest.get("products", {}):
+                manifest["products"][product_key]["frames"] = [
+                    f for f in manifest["products"][product_key]["frames"] if not f.get("is_forecast")
+                ]
+
+        # ── Adwekcja wsteczna (semi-Lagrangian) dla każdego kroku ─────────
+        dbz_last = np.nan_to_num(dbz_stack[-1], nan=0.0).astype(np.float32)
+        row_idx  = np.arange(H, dtype=np.float32)[:, np.newaxis] * np.ones((1, W), dtype=np.float32)
+        col_idx  = np.ones((H, 1), dtype=np.float32) * np.arange(W, dtype=np.float32)[np.newaxis, :]
+
+        new_fc_frames = []
+        for step in range(1, CMAX_FORECAST_STEPS + 1):
+            lead_min = step * CMAX_FORECAST_STEP_MIN
+            lead_h   = lead_min / 60.0
+
+            u_px = u_field * lead_h / dpix_lon_km
+            v_px = v_field * lead_h / dpix_lat_km
+
+            fc_dbz = map_coordinates(
+                dbz_last,
+                [(row_idx - v_px).ravel(), (col_idx - u_px).ravel()],
+                order=1, mode="constant", cval=0.0,
+            ).reshape(H, W).astype(np.float32)
+            fc_dbz = np.clip(fc_dbz, 0, None)
+            fc_dbz[fc_dbz < 1.0] = np.nan
+
+            valid_dt = datetime.utcfromtimestamp(float(timestamps[-1]) + lead_h * 3600.0)
+            ts_str   = valid_dt.strftime("%Y%m%d%H%M%S")
+            png_path  = overlay_dir / f"forecast_{ts_str}.png"
+            json_path = overlay_dir / f"forecast_{ts_str}.json"
+
+            fc_rd = {**radar_data, "radar_data": {"dataset1": fc_dbz}, "start_date": valid_dt}
+            frame_meta = _radar_renderer.render_overlay(fc_rd, str(png_path), style="noaa", dpi=80, size=6)
+            frame_meta["is_forecast"]     = True
+            frame_meta["forecast_lead_h"] = round(lead_h, 3)
+
+            with open(json_path, "w", encoding="utf-8") as jf:
+                json.dump(frame_meta, jf, ensure_ascii=False, indent=2)
+
+            image_rel = "../" + str(png_path.relative_to(PROJECT_PATH)).replace("\\", "/")
+            new_fc_frames.append({
                 "timestamp":       frame_meta["timestamp"],
                 "image":           image_rel,
                 "bounds":          frame_meta["bounds"],
                 "quantity":        frame_meta["quantity"],
                 "is_forecast":     True,
-                "forecast_lead_h": CMAX_FORECAST_LEAD_H,
+                "forecast_lead_h": round(lead_h, 3),
             })
-            manifest["products"][product_key]["frames"].sort(key=lambda f: f["timestamp"])
 
-        if ftp_session:
-            ftp_session.upload(png_path,  _to_remote(png_path))
-            ftp_session.upload(json_path, _to_remote(json_path))
+            if ftp_session:
+                ftp_session.upload(png_path,  _to_remote(png_path))
+                ftp_session.upload(json_path, _to_remote(json_path))
+
+        log.info("[%s] Prognoza CMAX: %d klatek co %d min (+%d min maks.)",
+                 product_key, len(new_fc_frames), CMAX_FORECAST_STEP_MIN,
+                 CMAX_FORECAST_STEPS * CMAX_FORECAST_STEP_MIN)
+
+        with manifest_lock:
+            if product_key not in manifest.get("products", {}):
+                manifest.setdefault("products", {})[product_key] = {"label": label, "frames": []}
+            manifest["products"][product_key]["frames"].extend(new_fc_frames)
+            manifest["products"][product_key]["frames"].sort(key=lambda f: f["timestamp"])
 
     except Exception as exc:
         import traceback
