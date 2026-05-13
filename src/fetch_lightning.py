@@ -482,10 +482,10 @@ def _radar_motion(
             pyr_scale=0.5, levels=5, winsize=25,
             iterations=3, poly_n=7, poly_sigma=1.5, flags=0,
         )
-        # flow[...,0]=Δcol(wschód+), flow[...,1]=Δrow(południe+) → negujemy V
+        # flow[...,0]=Δcol(wschód+), flow[...,1]=Δrow(północ+, bo row0=południe po flipud)
         dt_h   = dt_s / 3600.0
-        u_kmh  =  flow[..., 0] * dpix_lon_km / dt_h
-        v_kmh  = -flow[..., 1] * dpix_lat_km / dt_h
+        u_kmh  = flow[..., 0] * dpix_lon_km / dt_h
+        v_kmh  = flow[..., 1] * dpix_lat_km / dt_h
 
         w = has_echo.astype(np.float32) * float(i + 1)  # nowsze pary → wyższa waga
         sum_u  += u_kmh * w
