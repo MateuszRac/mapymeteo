@@ -320,16 +320,22 @@ def _station_name(cfg, radar_id):
 
 def load_manifest():
     if MANIFEST.exists():
-        with open(MANIFEST, encoding="utf-8") as f:
-            return json.load(f)
+        try:
+            with open(MANIFEST, encoding="utf-8") as f:
+                return json.load(f)
+        except json.JSONDecodeError as e:
+            log.warning("Manifest uszkodzony (%s) – resetuję.", e)
+            MANIFEST.rename(MANIFEST.with_suffix(".broken"))
     return {"updated": "", "products": {}}
 
 
 def save_manifest(manifest):
     MANIFEST.parent.mkdir(parents=True, exist_ok=True)
     manifest["updated"] = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
-    with open(MANIFEST, "w", encoding="utf-8") as f:
+    tmp = MANIFEST.with_suffix(".tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
         json.dump(manifest, f, ensure_ascii=False, indent=2)
+    tmp.replace(MANIFEST)
     log.debug("Manifest zapisany: %s", MANIFEST)
 
 
