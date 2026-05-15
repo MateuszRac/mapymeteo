@@ -382,6 +382,8 @@ def _compute_cmax_forecast(radar_data: dict, product_key: str, label: str,
         row_idx  = np.arange(H, dtype=np.float32)[:, np.newaxis] * np.ones((1, W), dtype=np.float32)
         col_idx  = np.ones((H, 1), dtype=np.float32) * np.arange(W, dtype=np.float32)[np.newaxis, :]
 
+        gen_str = datetime.utcnow().strftime("%Y%m%d%H%M%S")  # czas generowania — unikalny per przebieg
+
         new_fc_frames = []
         for step in range(1, CMAX_FORECAST_STEPS + 1):
             lead_min = step * CMAX_FORECAST_STEP_MIN
@@ -400,8 +402,8 @@ def _compute_cmax_forecast(radar_data: dict, product_key: str, label: str,
 
             valid_dt = datetime.utcfromtimestamp(float(timestamps[-1]) + lead_h * 3600.0)
             ts_str   = valid_dt.strftime("%Y%m%d%H%M%S")
-            png_path  = overlay_dir / f"forecast_{ts_str}.png"
-            json_path = overlay_dir / f"forecast_{ts_str}.json"
+            png_path  = overlay_dir / f"forecast_{gen_str}_{ts_str}.png"
+            json_path = overlay_dir / f"forecast_{gen_str}_{ts_str}.json"
 
             fc_rd = {**radar_data, "radar_data": {"dataset1": fc_dbz}, "start_date": valid_dt}
             frame_meta = _radar_renderer.render_overlay(fc_rd, str(png_path), style="noaa", dpi=80, size=6)
