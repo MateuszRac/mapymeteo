@@ -200,19 +200,23 @@ def _gfs_regression_motion(raw_u, raw_v, gfs_grid, dbz):
     if coeff_u is None or coeff_v is None:
         return None
 
-    H, W  = raw_u.shape
-    n_pts = H * W
-    Xu_f  = np.column_stack([c.ravel() for c in u_cols] + [np.ones(n_pts, dtype=np.float32)])
-    Xv_f  = np.column_stack([c.ravel() for c in v_cols] + [np.ones(n_pts, dtype=np.float32)])
-    u_pred = (Xu_f @ coeff_u).reshape(H, W).astype(np.float32)
-    v_pred = (Xv_f @ coeff_v).reshape(H, W).astype(np.float32)
+    # Zastosuj model do średnich GFS po obszarze echa → jeden wektor ruchu dla domeny.
+    # Przestrzennie zmienne pole ruchu powoduje "fałdowanie" obrazu w semi-Lagrangian
+    # advection (sąsiednie piksele lecą w różne miejsca), co daje artefakty pętli.
+    # Jeden jednorodny wektor to standard w operacyjnym nowcastingu (STEPS, MAPLE).
+    u_echo_means = np.array([float(c[valid].mean()) for c in u_cols] + [1.0], dtype=np.float64)
+    v_echo_means = np.array([float(c[valid].mean()) for c in v_cols] + [1.0], dtype=np.float64)
+    u_domain = float(u_echo_means @ coeff_u)
+    v_domain = float(v_echo_means @ coeff_v)
 
-    # Zaloguj wagi (diagnostyczne) — pomijamy ostatni (bias)
     lev_names = [lev for lev in LEVELS if f"u_{lev}" in gfs_grid]
     coeff_str  = " ".join(f"{l}={c:.2f}" for l, c in zip(lev_names, coeff_u[:-1]))
-    log.info("CMAX regression: %d pikseli, wagi U: %s  bias=%.1f", n, coeff_str, coeff_u[-1])
+    log.info("CMAX regression: %d pikseli, wagi U: %s bias=%.1f → u=%.1f v=%.1f km/h",
+             n, coeff_str, coeff_u[-1], u_domain, v_domain)
 
-    return u_pred, v_pred
+    H, W = raw_u.shape
+    return (np.full((H, W), u_domain, dtype=np.float32),
+            np.full((H, W), v_domain, dtype=np.float32))
 
 
 def _save_cmax_cache(radar_data: dict, product_key: str) -> None:
@@ -341,6 +345,13 @@ def _compute_cmax_forecast(radar_data: dict, product_key: str, label: str,
         raw_v    = np.where(sum_w > 0, sum_v / sum_w, np.nan)
         dbz_last = np.nan_to_num(dbz_stack[-1], nan=0.0).astype(np.float32)
 
+        def _uniform_of(ru, rv, h, w):
+            """Uśredniony wektor OF jako jednorodne pole — bez artefaktów fałdowania."""
+            u0 = float(np.nanmean(ru)) if np.any(np.isfinite(ru)) else 0.0
+            v0 = float(np.nanmean(rv)) if np.any(np.isfinite(rv)) else 0.0
+            log.info("CMAX OF fallback: u=%.1f v=%.1f km/h", u0, v0)
+            return np.full((h, w), u0, dtype=np.float32), np.full((h, w), v0, dtype=np.float32)
+
         # ── Regresja GFS: zastąp pole OF polem GFS-kalibrowanym ──────────
         motion_source = "optical_flow"
         sv = _load_storm_env()
@@ -353,14 +364,11 @@ def _compute_cmax_forecast(radar_data: dict, product_key: str, label: str,
                     u_field, v_field = regr
                     motion_source = "gfs_regression"
                 else:
-                    u_field = _fill(raw_u)
-                    v_field = _fill(raw_v)
+                    u_field, v_field = _uniform_of(raw_u, raw_v, H, W)
             else:
-                u_field = _fill(raw_u)
-                v_field = _fill(raw_v)
+                u_field, v_field = _uniform_of(raw_u, raw_v, H, W)
         else:
-            u_field = _fill(raw_u)
-            v_field = _fill(raw_v)
+            u_field, v_field = _uniform_of(raw_u, raw_v, H, W)
 
         log.info("[%s] CMAX forecast: źródło pola ruchu = %s", product_key, motion_source)
 
