@@ -286,8 +286,8 @@ def _compute_cmax_forecast(radar_data: dict, product_key: str, label: str,
         if dbz_stack.ndim != 3 or len(dbz_stack) < 2:
             log.debug("CMAX forecast: za mało klatek (%d)", len(dbz_stack) if dbz_stack.ndim == 3 else 1)
             return
-        if _time.time() - float(timestamps[-1]) > 25 * 60:
-            log.debug("CMAX forecast: cache za stary")
+        if _time.time() - float(timestamps[-1]) > 4 * 3600:
+            log.warning("CMAX forecast: cache za stary (>4h) — pomijam")
             return
 
         H, W = lats.shape
