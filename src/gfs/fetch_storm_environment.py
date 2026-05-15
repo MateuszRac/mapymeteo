@@ -49,6 +49,9 @@ _ENV_PARAMS = {
     "var_USTM": "on",
     "var_VSTM": "on",
     "lev_surface":               "on",
+    "lev_800_mb":                "on",
+    "lev_700_mb":                "on",
+    "lev_600_mb":                "on",
     "lev_500_mb":                "on",
     "lev_450_mb":                "on",
     "lev_10_m_above_ground":     "on",
@@ -78,6 +81,12 @@ def _extract_grib(fp: Path, orog_cache: list) -> tuple | None:
         vstm = reader.get_parameter("vstm", "heightAboveGroundLayer", 6000, step_type="instant")
         cape = reader.get_parameter("cape", "surface", 0)
 
+        p800_u   = reader.get_parameter("u",  "isobaricInhPa", 800)
+        p800_v   = reader.get_parameter("v",  "isobaricInhPa", 800)
+        p700_u   = reader.get_parameter("u",  "isobaricInhPa", 700)
+        p700_v   = reader.get_parameter("v",  "isobaricInhPa", 700)
+        p600_u   = reader.get_parameter("u",  "isobaricInhPa", 600)
+        p600_v   = reader.get_parameter("v",  "isobaricInhPa", 600)
         p500_u   = reader.get_parameter("u",  "isobaricInhPa", 500)
         p500_v   = reader.get_parameter("v",  "isobaricInhPa", 500)
         p500_hgt = reader.get_parameter("gh", "isobaricInhPa", 500)
@@ -125,7 +134,13 @@ def _extract_grib(fp: Path, orog_cache: list) -> tuple | None:
             vstm.values.astype(np.float32),
             cape_v,
             shear.astype(np.float32),
-            wms)
+            wms,
+            u10.values.astype(np.float32),    v10.values.astype(np.float32),
+            p800_u.values.astype(np.float32),  p800_v.values.astype(np.float32),
+            p700_u.values.astype(np.float32),  p700_v.values.astype(np.float32),
+            p600_u.values.astype(np.float32),  p600_v.values.astype(np.float32),
+            p500_u.values.astype(np.float32),  p500_v.values.astype(np.float32),
+            p450_u.values.astype(np.float32),  p450_v.values.astype(np.float32))
 
 
 def fetch_and_save(n_files: int = 25, keep: int = 3) -> Path | None:
@@ -174,13 +189,26 @@ def fetch_and_save(n_files: int = 25, keep: int = 3) -> Path | None:
     cape_list:   list = []
     shear_list:  list = []
     wms_list:    list = []
+    u10m_list:   list = []
+    v10m_list:   list = []
+    u800_list:   list = []
+    v800_list:   list = []
+    u700_list:   list = []
+    v700_list:   list = []
+    u600_list:   list = []
+    v600_list:   list = []
+    u500_list:   list = []
+    v500_list:   list = []
+    u450_list:   list = []
+    v450_list:   list = []
     lats = lons = None
 
     for fp in sorted(downloaded):
         res = _extract_grib(fp, orog_cache)
         if res is None:
             continue
-        lts, lns, vt, ustm, vstm, cape, shear, wms = res
+        (lts, lns, vt, ustm, vstm, cape, shear, wms,
+         u10m, v10m, u800, v800, u700, v700, u600, v600, u500, v500, u450, v450) = res
         if lats is None:
             lats, lons = lts, lns
         valid_times.append(vt)
@@ -189,6 +217,12 @@ def fetch_and_save(n_files: int = 25, keep: int = 3) -> Path | None:
         cape_list.append(cape)
         shear_list.append(shear)
         wms_list.append(wms)
+        u10m_list.append(u10m);  v10m_list.append(v10m)
+        u800_list.append(u800);  v800_list.append(v800)
+        u700_list.append(u700);  v700_list.append(v700)
+        u600_list.append(u600);  v600_list.append(v600)
+        u500_list.append(u500);  v500_list.append(v500)
+        u450_list.append(u450);  v450_list.append(v450)
 
     for fp in downloaded:
         fp.unlink(missing_ok=True)
@@ -213,6 +247,18 @@ def fetch_and_save(n_files: int = 25, keep: int = 3) -> Path | None:
         shear       = np.array(shear_list, dtype=np.float32)[order],
         wmaxshear   = np.array(wms_list,   dtype=np.float32)[order],
         init_time   = np.array([init_dt.timestamp()], dtype=np.float64),
+        u_10m       = np.array(u10m_list,  dtype=np.float32)[order],
+        v_10m       = np.array(v10m_list,  dtype=np.float32)[order],
+        u_800       = np.array(u800_list,  dtype=np.float32)[order],
+        v_800       = np.array(v800_list,  dtype=np.float32)[order],
+        u_700       = np.array(u700_list,  dtype=np.float32)[order],
+        v_700       = np.array(v700_list,  dtype=np.float32)[order],
+        u_600       = np.array(u600_list,  dtype=np.float32)[order],
+        v_600       = np.array(v600_list,  dtype=np.float32)[order],
+        u_500       = np.array(u500_list,  dtype=np.float32)[order],
+        v_500       = np.array(v500_list,  dtype=np.float32)[order],
+        u_450       = np.array(u450_list,  dtype=np.float32)[order],
+        v_450       = np.array(v450_list,  dtype=np.float32)[order],
     )
     log.info("Zapisano %s (%d kroków, orografia=%s)",
              out_path.name, len(valid_times),

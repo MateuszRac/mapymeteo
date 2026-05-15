@@ -73,6 +73,147 @@ _CMAX_STACK_FRAMES    = 5
 CMAX_FORECAST_STEPS   = 24   # liczba klatek prognozy
 CMAX_FORECAST_STEP_MIN = 5   # krok prognozy [min]
 
+_SV_DIR       = PROJECT_PATH / "data" / "storm_vectors"
+_SV_MAX_AGE_H = 12           # odrzuć NPZ starszy niż 12 h
+_SV_MAX_DT_H  = 2            # odrzuć jeśli brak kroku GFS w ciągu 2 h od radaru
+_REGR_MIN_PIX = 200          # minimalna liczba pikseli ech do regresji
+
+
+def _load_storm_env():
+    """Wczytuje najnowszy storm_env NPZ. Zwraca dict lub None."""
+    import numpy as np, time as _time
+    files = sorted(_SV_DIR.glob("storm_env_*.npz"))
+    if not files:
+        log.debug("storm_env: brak plików w %s", _SV_DIR)
+        return None
+    latest = files[-1]
+    age_s  = _time.time() - latest.stat().st_mtime
+    if age_s > _SV_MAX_AGE_H * 3600:
+        log.debug("storm_env: plik za stary (%.1f h): %s", age_s / 3600, latest.name)
+        return None
+    try:
+        d = np.load(latest)
+        result = {k: d[k] for k in d.files}
+        log.debug("storm_env: wczytano %s (%d kroków)", latest.name,
+                  len(result.get("valid_times", [])))
+        return result
+    except Exception as exc:
+        log.warning("storm_env: błąd ładowania %s: %s", latest.name, exc)
+        return None
+
+
+def _find_sv_time_idx(sv, target_unix):
+    """Zwraca indeks najbliższego kroku GFS lub None jeśli za daleko."""
+    import numpy as np
+    vt   = sv["valid_times"]
+    diff = np.abs(vt - target_unix)
+    idx  = int(np.argmin(diff))
+    if diff[idx] > _SV_MAX_DT_H * 3600:
+        log.debug("storm_env: brak kroku GFS bliskiego radarowi (Δ=%.1f h)", diff[idx] / 3600)
+        return None
+    return idx
+
+
+def _interp_gfs_to_cmax(sv, t_idx, cmax_lats, cmax_lons):
+    """
+    Interpoluje wiatry GFS (wszystkie dostępne poziomy) z siatki 0.25° na siatkę CMAX.
+    Zwraca dict z kluczami 'u_10m','v_10m','u_800','v_800',... jako tablice (H,W) [km/h].
+    """
+    import numpy as np
+    from scipy.interpolate import RegularGridInterpolator
+
+    gfs_lats = sv["lats"].astype(np.float64)   # 1D
+    gfs_lons = sv["lons"].astype(np.float64)   # 1D
+
+    # RegularGridInterpolator wymaga rosnących osi
+    lat_flip = gfs_lats[0] > gfs_lats[-1]
+    if lat_flip:
+        gfs_lats = gfs_lats[::-1]
+
+    pts = np.column_stack([cmax_lats.ravel().astype(np.float64),
+                           cmax_lons.ravel().astype(np.float64)])
+    result = {}
+
+    # npz_key → out_key: ustm/vstm dostają prefix u_/v_ dla spójności z regresją
+    key_map = {
+        "u_10m": "u_10m", "v_10m": "v_10m",
+        "u_800": "u_800", "v_800": "v_800",
+        "u_700": "u_700", "v_700": "v_700",
+        "u_600": "u_600", "v_600": "v_600",
+        "u_500": "u_500", "v_500": "v_500",
+        "u_450": "u_450", "v_450": "v_450",
+        "ustm":  "u_ustm", "vstm":  "v_ustm",
+    }
+    for npz_key, out_key in key_map.items():
+        if npz_key not in sv:
+            continue
+        arr = sv[npz_key][t_idx].astype(np.float64)   # (lat, lon)
+        if lat_flip:
+            arr = arr[::-1, :]
+        interp = RegularGridInterpolator(
+            (gfs_lats, gfs_lons), arr,
+            method="linear", bounds_error=False, fill_value=None,
+        )
+        result[out_key] = (interp(pts).reshape(cmax_lats.shape) * 3.6).astype(np.float32)
+
+    return result
+
+
+def _gfs_regression_motion(raw_u, raw_v, gfs_grid, dbz):
+    """
+    Uczy regresji liniowej: wiatry GFS na wielu poziomach → ruch ech (OF).
+    Dopasowanie tylko na pikselach z dBZ >= 10.
+    Predykcja na pełnej siatce — zwraca (u_pred, v_pred) lub None.
+
+    Osobne modele dla składowych U i V:
+        u_OF ≈ a0*u_10m + a1*u_800 + a2*u_700 + ... + bias
+        v_OF ≈ b0*v_10m + b1*v_800 + b2*v_700 + ... + bias
+    """
+    import numpy as np
+
+    LEVELS = ["10m", "800", "700", "600", "500", "450", "ustm"]
+    u_cols = [gfs_grid[f"u_{lev}"] for lev in LEVELS if f"u_{lev}" in gfs_grid]
+    v_cols = [gfs_grid[f"v_{lev}"] for lev in LEVELS if f"v_{lev}" in gfs_grid]
+
+    if not u_cols:
+        return None
+
+    echo  = (np.nan_to_num(dbz, nan=0.0) >= 10.0)
+    valid = echo & np.isfinite(raw_u) & np.isfinite(raw_v)
+    n     = int(valid.sum())
+
+    if n < _REGR_MIN_PIX:
+        log.debug("CMAX regression: za mało pikseli ech (%d < %d)", n, _REGR_MIN_PIX)
+        return None
+
+    def _fit(cols, y_field):
+        X = np.column_stack([c[valid] for c in cols] + [np.ones(n, dtype=np.float32)])
+        y = y_field[valid]
+        try:
+            coeff, _, _, _ = np.linalg.lstsq(X, y, rcond=None)
+        except np.linalg.LinAlgError:
+            return None, None
+        return coeff, X
+
+    coeff_u, _ = _fit(u_cols, raw_u)
+    coeff_v, _ = _fit(v_cols, raw_v)
+    if coeff_u is None or coeff_v is None:
+        return None
+
+    H, W  = raw_u.shape
+    n_pts = H * W
+    Xu_f  = np.column_stack([c.ravel() for c in u_cols] + [np.ones(n_pts, dtype=np.float32)])
+    Xv_f  = np.column_stack([c.ravel() for c in v_cols] + [np.ones(n_pts, dtype=np.float32)])
+    u_pred = (Xu_f @ coeff_u).reshape(H, W).astype(np.float32)
+    v_pred = (Xv_f @ coeff_v).reshape(H, W).astype(np.float32)
+
+    # Zaloguj wagi (diagnostyczne) — pomijamy ostatni (bias)
+    lev_names = [lev for lev in LEVELS if f"u_{lev}" in gfs_grid]
+    coeff_str  = " ".join(f"{l}={c:.2f}" for l, c in zip(lev_names, coeff_u[:-1]))
+    log.info("CMAX regression: %d pikseli, wagi U: %s  bias=%.1f", n, coeff_str, coeff_u[-1])
+
+    return u_pred, v_pred
+
 
 def _save_cmax_cache(radar_data: dict, product_key: str) -> None:
     """Zapisuje rolling stack N klatek CMAX [dBZ] jako NPZ dla optical flow."""
@@ -196,10 +337,32 @@ def _compute_cmax_forecast(radar_data: dict, product_key: str, label: str,
             ws = gaussian_filter(wf, sigma_px)
             return np.where(ws > 0.01, fs / ws, 0.0).astype(np.float32)
 
-        raw_u = np.where(sum_w > 0, sum_u / sum_w, np.nan)
-        raw_v = np.where(sum_w > 0, sum_v / sum_w, np.nan)
-        u_field = _fill(raw_u)
-        v_field = _fill(raw_v)
+        raw_u    = np.where(sum_w > 0, sum_u / sum_w, np.nan)
+        raw_v    = np.where(sum_w > 0, sum_v / sum_w, np.nan)
+        dbz_last = np.nan_to_num(dbz_stack[-1], nan=0.0).astype(np.float32)
+
+        # ── Regresja GFS: zastąp pole OF polem GFS-kalibrowanym ──────────
+        motion_source = "optical_flow"
+        sv = _load_storm_env()
+        if sv is not None:
+            t_idx = _find_sv_time_idx(sv, float(timestamps[-1]))
+            if t_idx is not None:
+                gfs_grid = _interp_gfs_to_cmax(sv, t_idx, lats, lons)
+                regr = _gfs_regression_motion(raw_u, raw_v, gfs_grid, dbz_last)
+                if regr is not None:
+                    u_field, v_field = regr
+                    motion_source = "gfs_regression"
+                else:
+                    u_field = _fill(raw_u)
+                    v_field = _fill(raw_v)
+            else:
+                u_field = _fill(raw_u)
+                v_field = _fill(raw_v)
+        else:
+            u_field = _fill(raw_u)
+            v_field = _fill(raw_v)
+
+        log.info("[%s] CMAX forecast: źródło pola ruchu = %s", product_key, motion_source)
 
         # ── Usuń stare pliki i klatki prognozy ───────────────────────────
         overlay_dir = OVERLAY_DIR / product_key
@@ -216,7 +379,6 @@ def _compute_cmax_forecast(radar_data: dict, product_key: str, label: str,
                 ]
 
         # ── Adwekcja wsteczna (semi-Lagrangian) dla każdego kroku ─────────
-        dbz_last = np.nan_to_num(dbz_stack[-1], nan=0.0).astype(np.float32)
         row_idx  = np.arange(H, dtype=np.float32)[:, np.newaxis] * np.ones((1, W), dtype=np.float32)
         col_idx  = np.ones((H, 1), dtype=np.float32) * np.arange(W, dtype=np.float32)[np.newaxis, :]
 
