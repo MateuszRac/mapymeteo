@@ -409,7 +409,7 @@ def render_and_publish(R_f: np.ndarray, cmax: dict,
             except Exception:
                 pass
 
-    gen_str   = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+    gen_str   = datetime.now(tz=None).strftime("%Y%m%d%H%M%S")
     new_frames = []
 
     for step in range(len(R_f)):
@@ -417,7 +417,7 @@ def render_and_publish(R_f: np.ndarray, cmax: dict,
         lead_h   = lead_min / 60.0
         fc_dbz   = R_f[step]
 
-        valid_dt = datetime.utcfromtimestamp(float(timestamps[-1]) + lead_h * 3600.0)
+        valid_dt = datetime.fromtimestamp(float(timestamps[-1]) + lead_h * 3600.0, tz=None)
         ts_str   = valid_dt.strftime("%Y%m%d%H%M%S")
         png_path  = overlay_dir / f"forecast_{gen_str}_{ts_str}.png"
         json_path = overlay_dir / f"forecast_{gen_str}_{ts_str}.json"
@@ -471,7 +471,7 @@ def update_manifest(new_frames: list[dict]) -> None:
     frames.extend(new_frames)
     frames.sort(key=lambda f: f["timestamp"])
     manifest["products"][PRODUCT_KEY]["frames"] = frames
-    manifest["updated"] = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+    manifest["updated"] = datetime.now(tz=None).strftime("%Y-%m-%dT%H:%M:%S")
 
     tmp = MANIFEST.with_suffix(".tmp")
     with open(tmp, "w", encoding="utf-8") as f:
@@ -542,8 +542,11 @@ def _make_radar_template(cmax: dict) -> dict:
         "lon_mesh":   x_mesh,
         "lat_mesh":   y_mesh,
         "radar_data": {"dataset1": cmax["dbz"][-1]},
-        "start_date": datetime.utcfromtimestamp(float(cmax["timestamps"][-1])),
+        "start_date": datetime.fromtimestamp(float(cmax["timestamps"][-1]), tz=None),
         "projection": "EPSG:3857",
+        "quantity":   "DBZH",
+        "product":    "MAX",
+        "system":     "POLCOMP",
     }
 
 
@@ -560,7 +563,7 @@ if __name__ == "__main__":
     setup_logging(LOG_DIR, level=args.log_level.upper())
 
     log.info("═══ cmax_forecast_pysteps start (%s UTC) ═══",
-             datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"))
+             datetime.now(tz=None).strftime("%Y-%m-%d %H:%M:%S"))
     log.info("Metoda: %s%s", args.method, " [dry-run]" if args.dry_run else "")
 
     ok = run(method=args.method, dry_run=args.dry_run)
